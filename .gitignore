@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Briefings folder (generated content, stays local)
+briefings/
+
+# Cache and logs
+cache/
+logs/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Generated PDFs (optional - uncomment to ignore)
+# briefings/*/briefings/*.pdf
+
+# Test output
+test-output/
+coverage/

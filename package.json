@@ -1,0 +1,27 @@
+{
+  "name": "daily-briefing",
+  "version": "1.0.0",
+  "description": "Daily news briefing system with neutral, factual coverage",
+  "private": true,
+  "scripts": {
+    "init": "node scripts/init-briefing.js",
+    "init:date": "node scripts/init-briefing.js --date",
+    "check": "node scripts/check-continue.js",
+    "verify": "node scripts/verify-source.js",
+    "pdf": "node scripts/generate-pdf.js"
+  },
+  "keywords": [
+    "news",
+    "briefing",
+    "aggregation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "optionalDependencies": {
+    "md-to-pdf": "^5.2.4",
+    "markdown-pdf": "^11.0.0"
+  }
+}
