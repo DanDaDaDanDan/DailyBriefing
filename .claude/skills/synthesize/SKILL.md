@@ -36,6 +36,8 @@ Rank stories by:
 
 ### 3. Generate short.md
 
+Write to `<briefing-dir>/briefings/short.md`:
+
 **Structure:**
 ```markdown
 # Daily Briefing - [Date]
@@ -70,6 +72,8 @@ Rank stories by:
 - Lead with most impactful information
 
 ### 4. Generate detailed.md
+
+Write to `<briefing-dir>/briefings/detailed.md`:
 
 **Structure:**
 ```markdown
@@ -118,6 +122,8 @@ According to [source], ...
 - Multiple perspectives on controversies
 
 ### 5. Generate full.md
+
+Write to `<briefing-dir>/briefings/full.md`:
 
 **Structure:**
 ```markdown
@@ -190,7 +196,7 @@ Apply throughout all formats:
 ## Gate 7 Criteria
 
 Synthesis passes when:
-- All three files generated: `briefings/short.md`, `detailed.md`, `full.md`
+- All three files generated in `<briefing-dir>/briefings/`: `short.md`, `detailed.md`, `full.md`
 - Word counts within target ranges
 - All axes have proportional coverage
 - Neutrality standards applied

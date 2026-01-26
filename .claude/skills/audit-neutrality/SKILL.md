@@ -17,7 +17,7 @@ Three agents review the briefing content in sequence:
 **Role:** Find potential bias, advocacy, or imbalance
 
 **Process:**
-1. Read all briefing files (short.md, detailed.md, full.md)
+1. Read all briefing files from `<briefing-dir>/briefings/` (short.md, detailed.md, full.md)
 2. Scan for forbidden language patterns
 3. Identify potential perspective imbalance
 4. Flag specific issues with location and severity
@@ -131,7 +131,7 @@ If issues found:
 
 ## Write Audit Report
 
-Save to `audit-neutrality.md`:
+Save to `<briefing-dir>/audit-neutrality.md`:
 ```markdown
 # Neutrality Audit - YYYY-MM-DD
 

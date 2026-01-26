@@ -83,7 +83,7 @@ story.findingId = "US-001";
 
 ## Triage Output
 
-Write `triage-summary.md` (optional but helpful):
+Write `<briefing-dir>/triage-summary.md` (optional but helpful):
 ```markdown
 # Triage Summary - YYYY-MM-DD
 

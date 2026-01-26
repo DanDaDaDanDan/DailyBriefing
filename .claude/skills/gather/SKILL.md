@@ -87,7 +87,7 @@ Structure each story:
 
 ### 4. Write Output
 
-**topics/[axis-id].md:**
+Write to `<briefing-dir>/topics/[axis-id].md`:
 ```markdown
 # [Axis Name] - News Summary
 Date: YYYY-MM-DD

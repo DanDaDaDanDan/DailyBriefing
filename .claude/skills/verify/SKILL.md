@@ -44,9 +44,9 @@ The script:
 
 ### 3. Evidence Structure
 
-Each captured source gets a folder:
+Each captured source gets a folder in `<briefing-dir>/evidence/`:
 ```
-evidence/S001/
+<briefing-dir>/evidence/S001/
 ├── raw.html        # Original page HTML
 ├── content.md      # Extracted text content
 └── metadata.json   # Verification metadata

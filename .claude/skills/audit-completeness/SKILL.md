@@ -22,8 +22,8 @@ For each interest axis:
 ### 2. Story Inclusion
 
 Compare gathered content against briefings:
-- All high-priority stories should appear in detailed.md
-- Top 2-3 stories per axis should appear in short.md
+- All high-priority stories should appear in `<briefing-dir>/briefings/detailed.md`
+- Top 2-3 stories per axis should appear in `<briefing-dir>/briefings/short.md`
 - No significant story should be omitted without reason
 
 ### 3. Investigation Integration
@@ -100,7 +100,7 @@ Flag issues:
 
 ## Output
 
-Write `audit-completeness.md`:
+Write `<briefing-dir>/audit-completeness.md`:
 
 ```markdown
 # Completeness Audit - YYYY-MM-DD

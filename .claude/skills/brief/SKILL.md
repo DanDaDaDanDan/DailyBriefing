@@ -100,23 +100,27 @@ Run investigations in parallel. Each writes to `investigations/INV###/findings.m
 
 Captures sources to `evidence/` with SHA256 hashes.
 
-### 8. Synthesize Phase (Gate 7)
+### 8. Synthesize Phase
 
 ```
 /synthesize briefings/YYYY-MM-DD
 ```
 
-Generates `briefings/short.md`, `detailed.md`, and `full.md`.
+Generates output files in `<briefing-dir>/briefings/`:
+- `short.md`, `detailed.md`, `full.md`
 
-### 9. Audit Phase (Gate 6)
+### 9. Audit Phase (Gates 6 & 7)
 
-Run both audits:
+Run both audits on the generated content:
 ```
 /audit-neutrality briefings/YYYY-MM-DD
 /audit-completeness briefings/YYYY-MM-DD
 ```
 
-If issues found, remediate and re-run.
+- Gate 6 (Neutrality): Passes when no bias/advocacy issues remain
+- Gate 7 (Article): Passes when coverage is complete and quality standards met
+
+If issues found, remediate and re-run audits.
 
 ### 10. Finalize
 

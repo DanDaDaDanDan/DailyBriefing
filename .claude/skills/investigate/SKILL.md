@@ -59,7 +59,7 @@ Investigate from multiple perspectives:
 
 ### 4. Write Findings
 
-Create `investigations/INV###/findings.md`:
+Create `<briefing-dir>/investigations/INV###/findings.md`:
 
 ```markdown
 # Investigation: [Finding Title]
