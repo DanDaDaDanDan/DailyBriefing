@@ -11,33 +11,185 @@ Orchestrates the daily briefing workflow from start to finish.
 
 ## Workflow
 
-1. **Config Check** - If `briefings/config/interests.md` missing, use AskUserQuestion to gather interests and create it
-2. **Initialize** - Run `node scripts/init-briefing.js` to create daily folder structure
-3. **Plan** - Run `/plan` to create search strategies from interests
-4. **Gather** - Spawn parallel subagents with `/gather` for each interest axis
-5. **Triage** - Run `/triage` to evaluate findings and flag significant stories
-6. **Investigate** - Run `/investigate` for each flagged finding
-7. **Verify** - Run `/verify` to capture sources with hashes
-8. **Synthesize** - Run `/synthesize` to generate briefings
-9. **Audit** - Run `/audit-neutrality` and `/audit-completeness`
-10. **Finalize** - Generate PDFs, mark complete
+### 1. Config Check (Gate 0)
+
+Check if `briefings/config/interests.md` exists.
+
+**If missing:** Use AskUserQuestion to gather interests:
+- Ask what topics/areas the user wants to track
+- Ask for any geographic focus
+- Ask what perspective matters (professional, personal, etc.)
+
+Then create `briefings/config/interests.md` with their responses, formatted as:
+```markdown
+## [Topic Name]
+[Description of interest and context]
+```
+
+### 2. Initialize Structure
+
+Run the init script:
+```bash
+node scripts/init-briefing.js
+```
+
+This creates:
+```
+briefings/YYYY-MM-DD/
+├── state.json
+├── stories.json
+├── sources.json
+├── topics/
+├── investigations/
+├── evidence/
+└── briefings/
+```
+
+### 3. Plan Phase (Gate 1)
+
+Invoke the plan skill:
+```
+/plan briefings/YYYY-MM-DD
+```
+
+This reads interests and creates `plan.md` with search strategies.
+
+### 4. Gather Phase (Gate 2)
+
+Spawn parallel subagents - one per interest axis:
+
+```javascript
+// For each axis in state.axes, spawn a Task:
+Task({
+  subagent_type: "general-purpose",
+  prompt: `Run /gather ${axisId} briefings/${date}
+           Use the search strategy from plan.md.
+           Write results to topics/${axisId}.md
+           Update stories.json with gathered stories.`
+})
+```
+
+**Important:** Launch all gather agents in parallel (single message with multiple Task calls). Wait for all to complete before proceeding.
+
+### 5. Triage Phase (Gate 3)
+
+```
+/triage briefings/YYYY-MM-DD
+```
+
+Evaluates stories and flags significant findings in `state.json.flaggedFindings`.
+
+### 6. Investigate Phase (Gate 4)
+
+For each flagged finding, spawn investigation agent:
+
+```javascript
+Task({
+  subagent_type: "general-purpose",
+  prompt: `Run /investigate ${findingId} briefings/${date}`
+})
+```
+
+Run investigations in parallel. Each writes to `investigations/INV###/findings.md`.
+
+### 7. Verify Phase (Gate 5)
+
+```
+/verify briefings/YYYY-MM-DD
+```
+
+Captures sources to `evidence/` with SHA256 hashes.
+
+### 8. Synthesize Phase (Gate 7)
+
+```
+/synthesize briefings/YYYY-MM-DD
+```
+
+Generates `briefings/short.md`, `detailed.md`, and `full.md`.
+
+### 9. Audit Phase (Gate 6)
+
+Run both audits:
+```
+/audit-neutrality briefings/YYYY-MM-DD
+/audit-completeness briefings/YYYY-MM-DD
+```
+
+If issues found, remediate and re-run.
+
+### 10. Finalize
+
+Generate PDFs (optional):
+```bash
+node scripts/generate-pdf.js briefings/YYYY-MM-DD
+```
+
+Update state to COMPLETE.
 
 ## Gate Checking
 
-After each phase, run:
+After each phase, check gate status:
 ```bash
 node scripts/check-continue.js briefings/YYYY-MM-DD
 ```
 
+Returns JSON with:
+- `canContinue`: boolean
+- `currentGate`: number
+- `nextPhase`: string
+- `issues`: array of blocking issues
+
 ## State Management
 
-Update `state.json` after each phase transition with current phase, gate, and timestamp.
+After each phase transition, update `state.json`:
 
-## Parallel Gathering
-
-Spawn one subagent per interest axis:
+```javascript
+state.phase = 'GATHER';  // Current phase
+state.currentGate = 2;   // Gate being worked on
+state.gatesPassed.push(1);  // Add completed gates
+state.updatedAt = new Date().toISOString();
 ```
-Task(subagent_type="general-purpose", prompt="Run /gather for {axis}...")
+
+## --status Output
+
+Display current progress:
+```
+Daily Briefing Status
+=====================
+Date: YYYY-MM-DD
+Phase: [current phase]
+Current Gate: [number] ([name])
+Gates Passed: [list]
+
+Interest Axes:
+- [axis]: [status]
+...
+
+Flagged Findings: [count]
+Errors: [count]
 ```
 
-Wait for all to complete before TRIAGE.
+## Completion Output
+
+When complete, display summary:
+```
+Daily Briefing Complete
+=======================
+Date: YYYY-MM-DD
+
+Generated Files:
+| File | Words | Description |
+|------|-------|-------------|
+| short.md | XXX | Quick read (3-5 min) |
+| detailed.md | XXX | Comprehensive (10-15 min) |
+| full.md | XXX | Complete with sources |
+
+Coverage Summary:
+[Brief summary of top stories per axis]
+
+Workflow Statistics:
+- Gates passed: 8/8
+- Stories investigated: X
+- Sources verified: X
+```
