@@ -106,12 +106,6 @@ According to [source], ...
 
 ## [Axis 2 Name]
 ...
-
----
-
-## Sources
-
-[List of primary sources with links]
 ```
 
 **Guidelines:**

@@ -135,7 +135,7 @@ briefings/YYYY-MM-DD/
   "currentGate": 0,
   "gatesPassed": [],
   "phase": "INIT|PLAN|GATHER|TRIAGE|INVESTIGATE|VERIFY|SYNTHESIZE|AUDIT|FINALIZE|COMPLETE",
-  "axes": ["tech-industry", "personal-finance", "local-news"],
+  "axes": ["<axis-slug>", "..."],  // 1-N axes, derived from config headers
   "flaggedFindings": [],
   "errors": []
 }
