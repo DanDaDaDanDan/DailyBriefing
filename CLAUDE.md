@@ -64,7 +64,7 @@ For investigation (one agent per flagged finding):
 ## Workflow Phases
 
 ```
-INIT → PLAN → GATHER → TRIAGE → INVESTIGATE → VERIFY → FACT-VALIDATE → SYNTHESIZE → AUDIT → FINALIZE → COMPLETE
+INIT → PLAN → GATHER → TRIAGE → INVESTIGATE → VERIFY → SYNTHESIZE → AUDIT → FINALIZE → COMPLETE
 ```
 
 ### PLAN Phase
@@ -85,12 +85,9 @@ Gather news using MCP tools. For quantitative claims, must fetch actual sources 
 Evaluate stories and flag for investigation. Includes "Verifiable Facts" category for stories with dates, numbers, rates. See `/triage` skill for details.
 
 ### VERIFY Phase
-Capture sources with SHA256 hashes. Cross-check claims against sources using GPT. See `/verify` skill for details.
+Capture sources with SHA256 hashes. Use GPT to extract and validate all quantitative claims against captured sources. Outputs `fact-check.md`. See `/verify` skill for details.
 
-### FACT-VALIDATE Phase (Gate 6)
-Final fact-check before synthesis. All quantitative claims validated by GPT against captured sources. Outputs `fact-check.md`. See `/fact-validate` skill for details.
-
-## Gate Process (9 Gates)
+## Gate Process (8 Gates)
 
 All gates must pass sequentially. If a gate fails, return to the appropriate phase.
 
@@ -101,10 +98,9 @@ All gates must pass sequentially. If a gate fails, return to the appropriate pha
 | 2 | Gather | All `topics/*.md` files exist (one per axis from config) |
 | 3 | Triage | All findings evaluated, significant ones flagged in `state.json` |
 | 4 | Investigate | All flagged findings have complete investigations |
-| 5 | Verify | All sources in `evidence/` with valid SHA256 hashes |
-| 6 | Fact Validation | All quantitative claims validated against sources; `fact-check.md` complete |
-| 7 | Neutrality | Multi-agent debate passes (no advocacy, balanced presentation) |
-| 8 | Article | `short.md`, `detailed.md`, `full.md` generated and pass quality check |
+| 5 | Verify | Sources captured with hashes; all quantitative claims validated; `fact-check.md` complete |
+| 6 | Audit | Neutrality and completeness checks pass |
+| 7 | Article | `short.md`, `detailed.md`, `full.md` generated and pass quality check |
 
 ## State Management
 
@@ -115,7 +111,7 @@ briefings/YYYY-MM-DD/
 ├── plan.md             # Search strategies determined during PLAN phase
 ├── stories.json        # Story registry with IDs, status, sources
 ├── sources.json        # Source registry with URLs, hashes, timestamps
-├── fact-check.md       # Fact validation results (Gate 6)
+├── fact-check.md       # Fact validation results (from VERIFY phase)
 ├── topics/             # One file per interest axis
 ├── investigations/     # Deep investigation outputs
 │   └── INV###/
@@ -137,7 +133,7 @@ briefings/YYYY-MM-DD/
   "date": "YYYY-MM-DD",
   "currentGate": 0,
   "gatesPassed": [],
-  "phase": "INIT|PLAN|GATHER|TRIAGE|INVESTIGATE|VERIFY|FACT-VALIDATE|SYNTHESIZE|AUDIT|FINALIZE|COMPLETE",
+  "phase": "INIT|PLAN|GATHER|TRIAGE|INVESTIGATE|VERIFY|SYNTHESIZE|AUDIT|FINALIZE|COMPLETE",
   "axes": ["tech-industry", "personal-finance", "local-news"],
   "flaggedFindings": [],
   "errors": []
@@ -231,23 +227,18 @@ Claude is prone to hallucinating specific numbers, dates, and rates from trainin
 4. **Opinion separation**: Clearly mark editorial/opinion content
 5. **Context provision**: Include relevant background without editorializing
 
-### Neutrality Audit (Gate 7)
-Three-agent debate:
-1. **Critic** - Identifies potential bias, advocacy, or imbalance
-2. **Defender** - Argues for the objectivity of the content
-3. **Arbiter** - Makes final determination with specific remediation
+### Audit (Gate 6)
+Single-pass check for neutrality and completeness. See `/audit` skill for details.
 
-### Factual Accuracy Audit
-Additional audit dimension for fact-checking:
-1. Sample 5-10 quantitative claims from briefing
-2. Verify each against captured source in `evidence/`
-3. Check for temporal currency against thresholds
-4. Pass/Fail with specific issues listed
+**Neutrality Checks:**
+- No forbidden language (verdict words, advocacy framing, emotional language)
+- Multiple perspectives on controversies
+- Proper attribution throughout
 
-**Audit Failure Conditions:**
-- Any claim cannot be traced to a captured source
-- Any numerical value doesn't match source
-- Any time-sensitive data exceeds currency threshold
+**Completeness Checks:**
+- All axes have proportional coverage
+- All high-priority stories included
+- Word counts within acceptable ranges
 
 ## Workflow Commands
 

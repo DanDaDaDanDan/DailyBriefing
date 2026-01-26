@@ -193,9 +193,9 @@ Apply throughout all formats:
 - Emotional: shocking, outrageous, unprecedented (unless quoting)
 - Partisan labels: far-left, far-right, extremist
 
-## Gate 7 Criteria
+## Output Requirements
 
-Synthesis passes when:
+Synthesis completes when:
 - All three files generated in `<briefing-dir>/briefings/`: `short.md`, `detailed.md`, `full.md`
 - Word counts within target ranges
 - All axes have proportional coverage

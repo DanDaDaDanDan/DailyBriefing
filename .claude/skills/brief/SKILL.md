@@ -20,11 +20,7 @@ Check if `briefings/config/interests.md` exists.
 - Ask for any geographic focus
 - Ask what perspective matters (professional, personal, etc.)
 
-Then create `briefings/config/interests.md` with their responses, formatted as:
-```markdown
-## [Topic Name]
-[Description of interest and context]
-```
+Then create `briefings/config/interests.md` with their responses.
 
 ### 2. Initialize Structure
 
@@ -33,43 +29,28 @@ Run the init script:
 node scripts/init-briefing.js
 ```
 
-This creates:
-```
-briefings/YYYY-MM-DD/
-├── state.json
-├── stories.json
-├── sources.json
-├── topics/
-├── investigations/
-├── evidence/
-└── briefings/
-```
+This creates the daily briefing folder structure.
 
 ### 3. Plan Phase (Gate 1)
 
-Invoke the plan skill:
 ```
 /plan briefings/YYYY-MM-DD
 ```
 
-This reads interests and creates `plan.md` with search strategies.
+Creates `plan.md` with search strategies per axis.
 
 ### 4. Gather Phase (Gate 2)
 
 Spawn parallel subagents - one per interest axis:
 
 ```javascript
-// For each axis in state.axes, spawn a Task:
 Task({
   subagent_type: "general-purpose",
-  prompt: `Run /gather ${axisId} briefings/${date}
-           Use the search strategy from plan.md.
-           Write results to topics/${axisId}.md
-           Update stories.json with gathered stories.`
+  prompt: `Run /gather ${axisId} briefings/${date}`
 })
 ```
 
-**Important:** Launch all gather agents in parallel (single message with multiple Task calls). Wait for all to complete before proceeding.
+**Important:** Launch all gather agents in parallel.
 
 ### 5. Triage Phase (Gate 3)
 
@@ -77,7 +58,7 @@ Task({
 /triage briefings/YYYY-MM-DD
 ```
 
-Evaluates stories and flags significant findings in `state.json.flaggedFindings`.
+Evaluates stories and flags significant findings.
 
 ### 6. Investigate Phase (Gate 4)
 
@@ -90,7 +71,7 @@ Task({
 })
 ```
 
-Run investigations in parallel. Each writes to `investigations/INV###/findings.md`.
+Run investigations in parallel.
 
 ### 7. Verify Phase (Gate 5)
 
@@ -98,75 +79,52 @@ Run investigations in parallel. Each writes to `investigations/INV###/findings.m
 /verify briefings/YYYY-MM-DD
 ```
 
-Captures sources to `evidence/` with SHA256 hashes.
+- Captures sources to `evidence/` with SHA256 hashes
+- Extracts and validates all quantitative claims using GPT
+- Produces `fact-check.md` with validation results
 
-### 8. Fact Validation Phase (Gate 6)
-
-Before synthesis, validate factual accuracy:
-```
-/fact-validate briefings/YYYY-MM-DD
-```
-
-This cross-checks all quantitative claims against captured sources and produces `fact-check.md`.
-
-### 9. Synthesize Phase
+### 8. Synthesize Phase
 
 ```
 /synthesize briefings/YYYY-MM-DD
 ```
 
-Generates output files in `<briefing-dir>/briefings/`:
-- `short.md`, `detailed.md`, `full.md`
+Generates `short.md`, `detailed.md`, `full.md` in briefings folder.
 
-### 10. Audit Phase (Gates 7 & 8)
+### 9. Audit Phase (Gate 6)
 
-Run both audits on the generated content:
 ```
-/audit-neutrality briefings/YYYY-MM-DD
-/audit-completeness briefings/YYYY-MM-DD
+/audit briefings/YYYY-MM-DD
 ```
 
-- Gate 7 (Neutrality): Passes when no bias/advocacy issues remain
-- Gate 8 (Article): Passes when coverage is complete and quality standards met
+Single-pass check for neutrality and completeness. Produces `audit.md`.
 
-If issues found, remediate and re-run audits.
+If issues found, remediate and re-run.
+
+### 10. Article Check (Gate 7)
+
+Verify final outputs:
+- All three briefing files exist
+- Word counts within acceptable ranges
+- No remaining issues from audit
 
 ### 11. Finalize
 
-Generate PDFs (optional):
-```bash
-node scripts/generate-pdf.js briefings/YYYY-MM-DD
-```
-
-Update state to COMPLETE.
-
-## Gate Checking
-
-After each phase, check gate status:
-```bash
-node scripts/check-continue.js briefings/YYYY-MM-DD
-```
-
-Returns JSON with:
-- `canContinue`: boolean
-- `currentGate`: number
-- `nextPhase`: string
-- `issues`: array of blocking issues
+Update state to COMPLETE. Optionally generate PDFs.
 
 ## State Management
 
-After each phase transition, update `state.json`:
+After each phase, update `state.json`:
 
 ```javascript
-state.phase = 'GATHER';  // Current phase
-state.currentGate = 2;   // Gate being worked on
-state.gatesPassed.push(1);  // Add completed gates
+state.phase = 'GATHER';
+state.currentGate = 2;
+state.gatesPassed.push(1);
 state.updatedAt = new Date().toISOString();
 ```
 
 ## --status Output
 
-Display current progress:
 ```
 Daily Briefing Status
 =====================
@@ -177,7 +135,6 @@ Gates Passed: [list]
 
 Interest Axes:
 - [axis]: [status]
-...
 
 Flagged Findings: [count]
 Errors: [count]
@@ -185,7 +142,6 @@ Errors: [count]
 
 ## Completion Output
 
-When complete, display summary:
 ```
 Daily Briefing Complete
 =======================
@@ -198,11 +154,8 @@ Generated Files:
 | detailed.md | XXX | Comprehensive (10-15 min) |
 | full.md | XXX | Complete with sources |
 
-Coverage Summary:
-[Brief summary of top stories per axis]
-
 Workflow Statistics:
-- Gates passed: 9/9
+- Gates passed: 8/8
 - Stories investigated: X
 - Sources verified: X
 ```

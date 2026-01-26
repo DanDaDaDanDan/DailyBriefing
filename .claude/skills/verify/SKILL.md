@@ -1,6 +1,6 @@
-# /verify - Source Verification
+# /verify - Source Verification & Fact Validation
 
-Captures and verifies sources with SHA256 hashes for integrity and archival.
+Captures sources, verifies with SHA256 hashes, and validates all quantitative claims using GPT.
 
 ## Usage
 
@@ -8,17 +8,20 @@ Captures and verifies sources with SHA256 hashes for integrity and archival.
 /verify <briefing-dir>
 ```
 
+## Core Principle
+
+**Claude orchestrates; GPT validates.** All fact-checking comparisons are performed by GPT with structured output. Claude never compares values using its own judgment.
+
 ## Process
 
 ### 1. Collect Source URLs
 
-Read from `stories.json` and investigation findings to get all unique source URLs that need verification.
+Read from `stories.json` and investigation findings to get all unique source URLs.
 
 ### 2. Capture Each Source
 
 For each unique URL:
 
-**Fetch Content**
 ```javascript
 mcp_osint.osint_get({
   target: url,
@@ -29,189 +32,100 @@ mcp_osint.osint_get({
 This saves:
 - `raw.html` - Original HTML content
 - `content.md` - Extracted markdown text
-- `metadata.json` - URL, fetch timestamp, headers
+- `metadata.json` - URL, fetch timestamp, headers, SHA256 hash
 
-**Generate Hash**
-```bash
-node scripts/verify-source.js evidence/S###
-```
+### 3. Extract Claims Using GPT
 
-The script:
-1. Reads `raw.html`
-2. Computes SHA256 hash
-3. Adds hash to `metadata.json`
-4. Returns verification status
-
-### 3. Evidence Structure
-
-Each captured source gets a folder in `<briefing-dir>/evidence/`:
-```
-<briefing-dir>/evidence/S001/
-├── raw.html        # Original page HTML
-├── content.md      # Extracted text content
-└── metadata.json   # Verification metadata
-```
-
-**metadata.json format:**
-```json
-{
-  "sourceId": "S001",
-  "url": "https://example.com/article",
-  "capturedAt": "2024-01-15T10:30:00Z",
-  "contentHash": "sha256:abc123...",
-  "contentLength": 45678,
-  "httpStatus": 200,
-  "contentType": "text/html",
-  "storyReferences": ["STY001", "STY005"]
-}
-```
-
-### 4. Update Sources Registry
-
-Add verified sources to `sources.json`:
-```javascript
-{
-  "sources": [
-    {
-      "id": "S001",
-      "url": "https://...",
-      "name": "Source Name",
-      "capturedAt": "ISO timestamp",
-      "hash": "sha256:...",
-      "verified": true,
-      "evidencePath": "evidence/S001/"
-    }
-  ],
-  "lastUpdated": "ISO timestamp",
-  "totalSources": 24,
-  "verifiedCount": 24,
-  "failedCount": 0
-}
-```
-
-### 5. Handle Failures
-
-If a source can't be captured:
-1. Log the error with URL and reason
-2. Mark as `verified: false` in registry
-3. Add to `state.errors` array
-4. Continue with remaining sources
-5. Note in final briefing which sources couldn't be verified
-
-```javascript
-{
-  "id": "S015",
-  "url": "https://...",
-  "verified": false,
-  "error": "HTTP 403 - Access denied",
-  "attemptedAt": "ISO timestamp"
-}
-```
-
-## Verification Script
-
-The `scripts/verify-source.js` script:
-
-```bash
-# Verify a single source
-node scripts/verify-source.js evidence/S001
-
-# Verify all sources
-node scripts/verify-source.js evidence/
-```
-
-Output:
-```json
-{
-  "sourceId": "S001",
-  "verified": true,
-  "hash": "sha256:abc123...",
-  "size": 45678
-}
-```
-
-### 6. GPT Web Search Verification
-
-For critical quantitative claims, use GPT's grounded web search to independently verify:
-
-```javascript
-mcp_openai.web_search({
-  query: "[specific claim to verify, e.g., 'FOMC meeting dates January 2026']",
-  model: "gpt-5.2",
-  include_sources: true
-})
-```
-
-**When to use GPT verification:**
-- Interest rates and monetary policy data
-- Meeting dates and schedules for official bodies
-- Legislative status and bill numbers
-- Economic indicators (GDP, unemployment, inflation)
-- Any claim where source capture failed
-
-**Record verification results:**
-```javascript
-{
-  "claim": "Fed funds rate is 3.50-3.75%",
-  "gpt_verification": {
-    "confirmed": true,
-    "gpt_result": "The federal funds rate target range is 3.50% to 3.75%",
-    "sources_cited": ["federalreserve.gov/..."],
-    "verified_at": "ISO timestamp"
-  }
-}
-```
-
-### 7. Cross-Check Content with GPT
-
-After capturing sources, use GPT to verify content accuracy:
+Read all topic files (`topics/*.md`) and use GPT to extract quantitative claims:
 
 ```javascript
 mcp_openai.generate_text({
   model: "gpt-5.2",
-  prompt: `Compare these claims against the source content. For each claim, state whether it is SUPPORTED, CONTRADICTED, or NOT FOUND in the source.
+  prompt: `Extract all quantitative claims from this content. Include dates, numbers, rates, percentages, schedules, and specific factual assertions.
 
-Claims from briefing:
-${claimsList}
-
-Source content:
-${capturedSourceContent}`,
+Content:
+${topicFileContent}`,
   json_schema: {
-    name: "claim_verification",
+    name: "claim_extraction",
     schema: {
       type: "object",
       properties: {
-        verifications: {
+        claims: {
           type: "array",
           items: {
             type: "object",
             properties: {
-              claim: { type: "string" },
-              status: { type: "string", enum: ["SUPPORTED", "CONTRADICTED", "NOT_FOUND"] },
-              source_quote: { type: "string", description: "Exact quote from source if found" },
-              correct_value: { type: "string", description: "If contradicted, what the source actually says" }
+              claim_text: { type: "string" },
+              claim_type: { type: "string", enum: ["date", "number", "rate", "percentage", "schedule", "policy", "other"] },
+              value: { type: "string" },
+              context: { type: "string" },
+              source_cited: { type: "string" }
             },
-            required: ["claim", "status"]
+            required: ["claim_text", "claim_type", "value", "context"]
           }
         }
       },
-      required: ["verifications"]
+      required: ["claims"]
     }
   },
   reasoning_effort: "low"
 })
 ```
 
-**Verification Checklist:**
-- [ ] All dates verified via GPT cross-check
-- [ ] All numerical values verified via GPT cross-check
-- [ ] All schedules/timelines verified via GPT cross-check
-- [ ] Contradicted claims flagged for correction
-- [ ] NOT_FOUND claims flagged for additional sourcing
+### 4. Validate Claims Against Sources
 
-### 8. Temporal Currency Check
+For each extracted claim, use GPT to verify against captured source:
 
-For time-sensitive domains, verify data currency:
+```javascript
+mcp_openai.generate_text({
+  model: "gpt-5.2",
+  prompt: `Verify this claim against the source content.
+
+CLAIM: "${claim.claim_text}"
+CLAIMED VALUE: "${claim.value}"
+
+SOURCE CONTENT:
+${evidenceContent}`,
+  json_schema: {
+    name: "claim_validation",
+    schema: {
+      type: "object",
+      properties: {
+        found_in_source: { type: "boolean" },
+        source_value: { type: "string" },
+        source_quote: { type: "string" },
+        matches: { type: "boolean" },
+        discrepancy: { type: "string" },
+        confidence: { type: "string", enum: ["high", "medium", "low"] }
+      },
+      required: ["found_in_source", "matches", "confidence"]
+    }
+  },
+  reasoning_effort: "low"
+})
+```
+
+### 5. Independent Verification for Critical Claims
+
+For critical claims (rates, official dates, policy positions), use GPT web search:
+
+```javascript
+mcp_openai.web_search({
+  query: "[specific claim, e.g., 'federal funds rate January 2026']",
+  model: "gpt-5.2",
+  include_sources: true
+})
+```
+
+**When to use:**
+- Interest rates and monetary policy
+- Meeting dates and schedules
+- Legislative status
+- Economic indicators
+
+### 6. Temporal Currency Check
+
+For time-sensitive domains, verify data is current:
 
 | Domain | Max Age |
 |--------|---------|
@@ -220,18 +134,73 @@ For time-sensitive domains, verify data currency:
 | Legislative status | 7 days |
 | Breaking news | 24 hours |
 
-If source is older than threshold:
-1. Use GPT web_search to find current data
-2. Capture the updated source
-3. Update claims with current values
+If source is older than threshold, use GPT web_search to find current data.
+
+### 7. Apply Corrections
+
+For any claim where GPT found a discrepancy:
+1. Use the GPT-extracted correct value
+2. Edit the topic file with the corrected value
+3. Add `[CORRECTED]` marker
+4. Log the correction
+
+### 8. Generate Fact-Check Report
+
+Write `<briefing-dir>/fact-check.md`:
+
+```markdown
+# Fact Validation Report - YYYY-MM-DD
+
+## Summary
+- Sources captured: [count]
+- Claims extracted: [count]
+- Verified: [count]
+- Corrections made: [count]
+- Unverifiable: [count]
+
+## Verified Claims
+
+| Claim | Source | Status | Confidence |
+|-------|--------|--------|------------|
+| FOMC meets Jan 27-28 | S002 | MATCH | High |
+
+## Corrections Made
+
+| Original | Corrected To | Source |
+|----------|--------------|--------|
+| [wrong] | [right] | S### |
+
+## Unverifiable Claims
+
+| Claim | Reason | Action |
+|-------|--------|--------|
+| [claim] | Not in source | Removed |
+```
+
+### 9. Update State
+
+```javascript
+state.phase = 'VERIFY';
+state.currentGate = 5;
+state.factCheckComplete = true;
+state.updatedAt = new Date().toISOString();
+```
+
+## Evidence Structure
+
+```
+<briefing-dir>/evidence/S001/
+├── raw.html        # Original HTML
+├── content.md      # Extracted text
+└── metadata.json   # URL, hash, timestamp
+```
 
 ## Gate 5 Criteria
 
 Verification passes when:
-- All cited sources have capture attempted
-- `evidence/S###/` folders exist for each source
-- SHA256 hashes recorded in `sources.json`
-- Failed captures logged with reasons
+- All cited sources captured with SHA256 hashes
 - At least 80% of sources successfully captured
-- All quantitative claims cross-checked against captured sources
-- No discrepancies between claims and source content
+- All quantitative claims extracted and validated by GPT
+- `fact-check.md` exists with validation results
+- All discrepancies corrected
+- No unresolved source conflicts
