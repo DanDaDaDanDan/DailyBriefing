@@ -100,7 +100,16 @@ Run investigations in parallel. Each writes to `investigations/INV###/findings.m
 
 Captures sources to `evidence/` with SHA256 hashes.
 
-### 8. Synthesize Phase
+### 8. Fact Validation Phase (Gate 6)
+
+Before synthesis, validate factual accuracy:
+```
+/fact-validate briefings/YYYY-MM-DD
+```
+
+This cross-checks all quantitative claims against captured sources and produces `fact-check.md`.
+
+### 9. Synthesize Phase
 
 ```
 /synthesize briefings/YYYY-MM-DD
@@ -109,7 +118,7 @@ Captures sources to `evidence/` with SHA256 hashes.
 Generates output files in `<briefing-dir>/briefings/`:
 - `short.md`, `detailed.md`, `full.md`
 
-### 9. Audit Phase (Gates 6 & 7)
+### 10. Audit Phase (Gates 7 & 8)
 
 Run both audits on the generated content:
 ```
@@ -117,12 +126,12 @@ Run both audits on the generated content:
 /audit-completeness briefings/YYYY-MM-DD
 ```
 
-- Gate 6 (Neutrality): Passes when no bias/advocacy issues remain
-- Gate 7 (Article): Passes when coverage is complete and quality standards met
+- Gate 7 (Neutrality): Passes when no bias/advocacy issues remain
+- Gate 8 (Article): Passes when coverage is complete and quality standards met
 
 If issues found, remediate and re-run audits.
 
-### 10. Finalize
+### 11. Finalize
 
 Generate PDFs (optional):
 ```bash
@@ -193,7 +202,7 @@ Coverage Summary:
 [Brief summary of top stories per axis]
 
 Workflow Statistics:
-- Gates passed: 8/8
+- Gates passed: 9/9
 - Stories investigated: X
 - Sources verified: X
 ```

@@ -130,6 +130,101 @@ Output:
 }
 ```
 
+### 6. GPT Web Search Verification
+
+For critical quantitative claims, use GPT's grounded web search to independently verify:
+
+```javascript
+mcp_openai.web_search({
+  query: "[specific claim to verify, e.g., 'FOMC meeting dates January 2026']",
+  model: "gpt-5.2",
+  include_sources: true
+})
+```
+
+**When to use GPT verification:**
+- Interest rates and monetary policy data
+- Meeting dates and schedules for official bodies
+- Legislative status and bill numbers
+- Economic indicators (GDP, unemployment, inflation)
+- Any claim where source capture failed
+
+**Record verification results:**
+```javascript
+{
+  "claim": "Fed funds rate is 3.50-3.75%",
+  "gpt_verification": {
+    "confirmed": true,
+    "gpt_result": "The federal funds rate target range is 3.50% to 3.75%",
+    "sources_cited": ["federalreserve.gov/..."],
+    "verified_at": "ISO timestamp"
+  }
+}
+```
+
+### 7. Cross-Check Content with GPT
+
+After capturing sources, use GPT to verify content accuracy:
+
+```javascript
+mcp_openai.generate_text({
+  model: "gpt-5.2",
+  prompt: `Compare these claims against the source content. For each claim, state whether it is SUPPORTED, CONTRADICTED, or NOT FOUND in the source.
+
+Claims from briefing:
+${claimsList}
+
+Source content:
+${capturedSourceContent}`,
+  json_schema: {
+    name: "claim_verification",
+    schema: {
+      type: "object",
+      properties: {
+        verifications: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              claim: { type: "string" },
+              status: { type: "string", enum: ["SUPPORTED", "CONTRADICTED", "NOT_FOUND"] },
+              source_quote: { type: "string", description: "Exact quote from source if found" },
+              correct_value: { type: "string", description: "If contradicted, what the source actually says" }
+            },
+            required: ["claim", "status"]
+          }
+        }
+      },
+      required: ["verifications"]
+    }
+  },
+  reasoning_effort: "low"
+})
+```
+
+**Verification Checklist:**
+- [ ] All dates verified via GPT cross-check
+- [ ] All numerical values verified via GPT cross-check
+- [ ] All schedules/timelines verified via GPT cross-check
+- [ ] Contradicted claims flagged for correction
+- [ ] NOT_FOUND claims flagged for additional sourcing
+
+### 8. Temporal Currency Check
+
+For time-sensitive domains, verify data currency:
+
+| Domain | Max Age |
+|--------|---------|
+| Monetary policy | 7 days |
+| Economic data | 30 days |
+| Legislative status | 7 days |
+| Breaking news | 24 hours |
+
+If source is older than threshold:
+1. Use GPT web_search to find current data
+2. Capture the updated source
+3. Update claims with current values
+
 ## Gate 5 Criteria
 
 Verification passes when:
@@ -138,3 +233,5 @@ Verification passes when:
 - SHA256 hashes recorded in `sources.json`
 - Failed captures logged with reasons
 - At least 80% of sources successfully captured
+- All quantitative claims cross-checked against captured sources
+- No discrepancies between claims and source content

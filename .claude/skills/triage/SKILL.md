@@ -116,10 +116,17 @@ Write `<briefing-dir>/triage-summary.md` (optional but helpful):
 - Breaking news where facts are still emerging
 - Controversial topics with strong opposing views
 - Stories with potential inaccuracies to verify
+- **Stories containing verifiable factual claims** (dates, numbers, rates, schedules)
+
+**Verifiable Facts Category:**
+Flag for source verification (even if not for deep investigation) any story containing:
+- Dates and schedules (meeting dates, deadlines, timelines)
+- Numerical data (rates, percentages, dollar amounts)
+- Official announcements or policy positions
+
+**Triage Question:** "Does this story contain specific factual claims that can be verified against official sources?" If yes → flag for source verification.
 
 **DON'T flag:**
-- Routine announcements
-- Stories with clear, uncontested facts
 - Minor updates to ongoing stories
 - Opinion pieces (unless analyzing their impact)
 

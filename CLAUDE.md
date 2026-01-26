@@ -64,7 +64,7 @@ For investigation (one agent per flagged finding):
 ## Workflow Phases
 
 ```
-INIT → PLAN → GATHER → TRIAGE → INVESTIGATE → VERIFY → SYNTHESIZE → AUDIT → FINALIZE → COMPLETE
+INIT → PLAN → GATHER → TRIAGE → INVESTIGATE → VERIFY → FACT-VALIDATE → SYNTHESIZE → AUDIT → FINALIZE → COMPLETE
 ```
 
 ### PLAN Phase
@@ -78,7 +78,60 @@ After initialization, the lead agent:
 3. Writes the search plan to `plan.md`
 4. Proceeds to GATHER with informed strategy
 
-## Gate Process (8 Gates)
+### GATHER Phase
+For any quantitative claim (dates, rates, numbers, percentages), the gather agent must:
+1. Actually fetch the source URL (not just cite it)
+2. Include the specific text/data point from the source
+3. Note the fetch timestamp for time-sensitive data
+
+**Required Story Format:**
+```markdown
+### [Story Title]
+- **Source:** [publication name]
+- **URL:** [actual URL fetched]
+- **Fetched:** [ISO timestamp]
+- **Verbatim:** "[exact quote or data point from source]"
+- **Summary:** [agent's summary of the story]
+```
+
+### TRIAGE Phase
+Triage evaluates all gathered findings and flags significant ones for investigation.
+
+**Triage Categories:**
+1. **Controversial** - Claims that may be disputed or have multiple perspectives
+2. **High-Impact** - Stories with significant user relevance
+3. **Verifiable Facts** - Stories containing specific factual claims that can be verified against official sources:
+   - Dates and schedules
+   - Numerical data (rates, percentages, dollar amounts)
+   - Official announcements or policy positions
+
+**Triage Question:** "Does this story contain specific factual claims that can be verified against official sources?"
+- If yes → flag for source verification (even if not flagged for deep investigation)
+
+### VERIFY Phase
+After capturing sources, verification must cross-check content:
+1. Extract all quantitative claims from topic files
+2. Compare each claim against captured source content
+3. Flag discrepancies for correction before synthesis
+
+**Verification Checklist:**
+- [ ] All dates match source documents
+- [ ] All numerical values match source documents
+- [ ] All schedules/timelines match source documents
+- [ ] Time-sensitive data uses most recent source
+
+### FACT-VALIDATE Phase (Gate 6)
+Before synthesis, validate all factual accuracy:
+1. All quantitative claims in topic files have been validated against captured sources
+2. Any discrepancies have been corrected
+3. Time-sensitive data has been verified against most recent official source
+
+**Output:** `fact-check.md` documenting:
+- Claims checked
+- Sources used for validation
+- Corrections made (if any)
+
+## Gate Process (9 Gates)
 
 All gates must pass sequentially. If a gate fails, return to the appropriate phase.
 
@@ -90,8 +143,9 @@ All gates must pass sequentially. If a gate fails, return to the appropriate pha
 | 3 | Triage | All findings evaluated, significant ones flagged in `state.json` |
 | 4 | Investigate | All flagged findings have complete investigations |
 | 5 | Verify | All sources in `evidence/` with valid SHA256 hashes |
-| 6 | Neutrality | Multi-agent debate passes (no advocacy, balanced presentation) |
-| 7 | Article | `short.md`, `detailed.md`, `full.md` generated and pass quality check |
+| 6 | Fact Validation | All quantitative claims validated against sources; `fact-check.md` complete |
+| 7 | Neutrality | Multi-agent debate passes (no advocacy, balanced presentation) |
+| 8 | Article | `short.md`, `detailed.md`, `full.md` generated and pass quality check |
 
 ## State Management
 
@@ -102,6 +156,7 @@ briefings/YYYY-MM-DD/
 ├── plan.md             # Search strategies determined during PLAN phase
 ├── stories.json        # Story registry with IDs, status, sources
 ├── sources.json        # Source registry with URLs, hashes, timestamps
+├── fact-check.md       # Fact validation results (Gate 6)
 ├── topics/             # One file per interest axis
 ├── investigations/     # Deep investigation outputs
 │   └── INV###/
@@ -123,7 +178,7 @@ briefings/YYYY-MM-DD/
   "date": "YYYY-MM-DD",
   "currentGate": 0,
   "gatesPassed": [],
-  "phase": "INIT|PLAN|GATHER|TRIAGE|INVESTIGATE|VERIFY|SYNTHESIZE|AUDIT|FINALIZE|COMPLETE",
+  "phase": "INIT|PLAN|GATHER|TRIAGE|INVESTIGATE|VERIFY|FACT-VALIDATE|SYNTHESIZE|AUDIT|FINALIZE|COMPLETE",
   "axes": ["tech-industry", "personal-finance", "local-news"],
   "flaggedFindings": [],
   "errors": []
@@ -156,8 +211,140 @@ briefings/YYYY-MM-DD/
 
 ### mcp-openai (Deep Research & Verification)
 - `deep_research` - In-depth investigation of findings
-- `generate_text` - Analysis and summarization
-- `web_search` - Verification searches
+- `generate_text` - Fact extraction with structured JSON output
+- `web_search` - Grounded verification searches with citations
+
+## Model Responsibilities & Anti-Hallucination Strategy
+
+### Core Principle
+**Claude orchestrates; GPT validates quantitative facts.**
+
+Claude is prone to hallucinating specific numbers, dates, and rates from training data. To prevent this, all quantitative fact extraction and verification is delegated to GPT with structured output.
+
+### Model Division by Task
+
+| Task | Model | Rationale |
+|------|-------|-----------|
+| Workflow orchestration | Claude | Good at planning and coordination |
+| News search | Grok (mcp-xai) | Real-time news access |
+| Qualitative summaries | Claude | Good at synthesis and writing |
+| **Quantitative fact extraction** | **GPT** | Structured output prevents fabrication |
+| **Fact verification** | **GPT** | JSON schema enforces source-grounded answers |
+| **Independent verification** | **GPT web_search** | Grounded search with citations |
+| Deep investigation | GPT (deep_research) | Thorough multi-source research |
+
+### Anti-Hallucination Rules
+
+1. **Claude MUST NOT generate quantitative claims from memory**
+   - No dates, rates, percentages, or specific numbers from training data
+   - All quantitative data must come from tool outputs
+
+2. **Quantitative facts require GPT extraction**
+   - Fetch the source content via osint_get
+   - Pass content to GPT with JSON schema
+   - Use only the GPT-extracted values in summaries
+
+3. **Verification uses GPT, not Claude judgment**
+   - Claude does not compare values
+   - GPT performs all claim-vs-source comparisons
+   - GPT structured output ensures grounded responses
+
+4. **When in doubt, use GPT web_search**
+   - Independent verification for critical claims
+   - Returns citations that can be validated
+   - Harder to hallucinate with live search
+
+### GPT Structured Output Pattern
+
+For fact extraction, always use JSON schema:
+```javascript
+mcp_openai.generate_text({
+  model: "gpt-5.2",
+  prompt: `Extract facts from: ${sourceContent}`,
+  json_schema: {
+    name: "fact_extraction",
+    schema: {
+      type: "object",
+      properties: {
+        facts: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              value: { type: "string" },
+              verbatim: { type: "string" }  // Forces grounding
+            },
+            required: ["value", "verbatim"]
+          }
+        }
+      }
+    }
+  },
+  reasoning_effort: "low"
+})
+```
+
+The `verbatim` field forces GPT to quote the source, preventing fabrication.
+
+### Failure Modes to Avoid
+
+| Failure | How It Happened (RCA-1) | Prevention |
+|---------|-------------------------|------------|
+| Wrong dates | Claude used 2025 training data for 2026 | GPT extracts dates from fetched source |
+| Wrong rates | Claude used pre-December rate | GPT web_search verifies current rate |
+| Fabricated probabilities | Claude made up "65%/30%" | Require GPT-extracted verbatim or omit |
+| Unfetched sources | Claude cited URL without reading | Require osint_get before any claims |
+
+## Source Verification Requirements
+
+### Temporal Currency Checks
+For domains with frequent updates, require:
+1. Check source publication date against briefing date
+2. If source is older than threshold, search for more recent source
+
+**Currency Thresholds:**
+| Domain | Max Age |
+|--------|---------|
+| Monetary policy | 7 days |
+| Economic data | 30 days |
+| Legislative status | 7 days |
+| Breaking news | 24 hours |
+
+**Flag in topic file:** `[DATA CURRENCY: Verified as of YYYY-MM-DD]`
+
+### Enhanced Source Capture
+Expand source capture beyond investigated stories:
+1. All sources cited in topic files (not just investigated stories)
+2. Most recent official statement/release for time-sensitive domains:
+   - Monetary policy: Latest FOMC statement/implementation note
+   - Tax policy: Latest IRS guidance
+   - Legislative: Latest bill status from Congress.gov
+   - Local government: Latest official minutes/announcements
+
+### Source-Claim Linking
+Each quantitative claim must link to its source:
+```json
+{
+  "claim": "FOMC meets January 27-28",
+  "source_id": "S002",
+  "source_location": "line 56-57",
+  "verified": true,
+  "verified_at": "2026-01-26T19:00:00Z"
+}
+```
+
+**Benefits:**
+- Audit can verify each claim has valid source
+- Discrepancies are immediately visible
+- Facilitates automated fact-checking
+
+### Multi-Source Verification
+Require 2+ sources for critical data:
+- Financial data (interest rates, market data)
+- Policy announcements (government positions)
+- Numerical claims with high user impact (costs, taxes, deadlines)
+
+**If sources conflict:** Flag for investigation rather than choosing one.
 
 ## Neutrality Requirements
 
@@ -174,11 +361,23 @@ briefings/YYYY-MM-DD/
 4. **Opinion separation**: Clearly mark editorial/opinion content
 5. **Context provision**: Include relevant background without editorializing
 
-### Neutrality Audit (Gate 6)
+### Neutrality Audit (Gate 7)
 Three-agent debate:
 1. **Critic** - Identifies potential bias, advocacy, or imbalance
 2. **Defender** - Argues for the objectivity of the content
 3. **Arbiter** - Makes final determination with specific remediation
+
+### Factual Accuracy Audit
+Additional audit dimension for fact-checking:
+1. Sample 5-10 quantitative claims from briefing
+2. Verify each against captured source in `evidence/`
+3. Check for temporal currency against thresholds
+4. Pass/Fail with specific issues listed
+
+**Audit Failure Conditions:**
+- Any claim cannot be traced to a captured source
+- Any numerical value doesn't match source
+- Any time-sensitive data exceeds currency threshold
 
 ## Workflow Commands
 

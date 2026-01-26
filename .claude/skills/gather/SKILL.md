@@ -75,7 +75,7 @@ Structure each story:
   headline: "Story headline",
   summary: "2-3 sentence neutral summary",
   sources: [
-    { name: "Source Name", url: "https://...", timestamp: "ISO date" }
+    { name: "Source Name", url: "https://...", timestamp: "ISO date", fetched: true }
   ],
   relevance: "high|medium|low",
   category: "politics|economy|technology|policy|other",
@@ -84,6 +84,116 @@ Structure each story:
   capturedAt: "ISO timestamp"
 }
 ```
+
+### 3a. Fetch Sources for Quantitative Stories
+
+For any story containing quantitative claims (dates, rates, numbers, percentages):
+
+**Step 1: Fetch the actual source**
+```javascript
+mcp_osint.osint_get({
+  target: sourceUrl,
+  output_path: `evidence/S###/`
+})
+```
+
+**Step 2: Use GPT to extract facts with structured output**
+
+This is CRITICAL - do NOT summarize quantitative data yourself. Use GPT with JSON schema to extract facts directly from the source:
+
+```javascript
+mcp_openai.generate_text({
+  model: "gpt-5.2",
+  prompt: `Extract all quantitative facts from this source content. Only include facts explicitly stated in the text - do not infer or calculate.
+
+Source URL: ${sourceUrl}
+Source Content:
+${sourceContent}`,
+  json_schema: {
+    name: "fact_extraction",
+    schema: {
+      type: "object",
+      properties: {
+        dates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              event: { type: "string", description: "What the date refers to" },
+              date: { type: "string", description: "The date value" },
+              verbatim: { type: "string", description: "Exact quote from source" }
+            },
+            required: ["event", "date", "verbatim"]
+          }
+        },
+        numbers: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              metric: { type: "string", description: "What is being measured" },
+              value: { type: "string", description: "The numeric value with units" },
+              verbatim: { type: "string", description: "Exact quote from source" }
+            },
+            required: ["metric", "value", "verbatim"]
+          }
+        },
+        rates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              rate_type: { type: "string", description: "Type of rate" },
+              value: { type: "string", description: "The rate value" },
+              effective_date: { type: "string", description: "When this rate is/was effective" },
+              verbatim: { type: "string", description: "Exact quote from source" }
+            },
+            required: ["rate_type", "value", "verbatim"]
+          }
+        },
+        schedules: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              event: { type: "string" },
+              schedule: { type: "string" },
+              verbatim: { type: "string" }
+            },
+            required: ["event", "schedule", "verbatim"]
+          }
+        }
+      },
+      required: ["dates", "numbers", "rates", "schedules"]
+    }
+  },
+  reasoning_effort: "low"
+})
+```
+
+**Step 3: Use only GPT-extracted facts in your summary**
+
+When writing the story summary, ONLY use facts that appear in the GPT extraction output. Do not add any quantitative data from your own knowledge.
+
+### Quantitative Claims Requirement
+
+**CRITICAL RULE:** Claude must NEVER generate quantitative claims (dates, numbers, rates, percentages) from its own knowledge. All quantitative data must come from:
+1. GPT structured extraction (preferred for accuracy)
+2. Direct verbatim quotes from fetched sources
+
+**Required format for stories with quantitative claims:**
+```markdown
+### [Story Title]
+- **Source:** [publication name]
+- **URL:** [actual URL fetched]
+- **Fetched:** [ISO timestamp]
+- **Extracted Facts (via GPT):**
+  - [fact 1 with verbatim]
+  - [fact 2 with verbatim]
+- **Summary:** [summary using ONLY the extracted facts above]
+```
+
+**FORBIDDEN:** Using Claude's training data for any specific numbers, dates, rates, or schedules. If GPT extraction fails or returns empty, note "No quantitative data extracted" rather than filling in from memory.
 
 ### 4. Write Output
 
