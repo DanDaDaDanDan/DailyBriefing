@@ -79,57 +79,16 @@ After initialization, the lead agent:
 4. Proceeds to GATHER with informed strategy
 
 ### GATHER Phase
-For any quantitative claim (dates, rates, numbers, percentages), the gather agent must:
-1. Actually fetch the source URL (not just cite it)
-2. Include the specific text/data point from the source
-3. Note the fetch timestamp for time-sensitive data
-
-**Required Story Format:**
-```markdown
-### [Story Title]
-- **Source:** [publication name]
-- **URL:** [actual URL fetched]
-- **Fetched:** [ISO timestamp]
-- **Verbatim:** "[exact quote or data point from source]"
-- **Summary:** [agent's summary of the story]
-```
+Gather news using MCP tools. For quantitative claims, must fetch actual sources and use GPT for fact extraction. See `/gather` skill for details.
 
 ### TRIAGE Phase
-Triage evaluates all gathered findings and flags significant ones for investigation.
-
-**Triage Categories:**
-1. **Controversial** - Claims that may be disputed or have multiple perspectives
-2. **High-Impact** - Stories with significant user relevance
-3. **Verifiable Facts** - Stories containing specific factual claims that can be verified against official sources:
-   - Dates and schedules
-   - Numerical data (rates, percentages, dollar amounts)
-   - Official announcements or policy positions
-
-**Triage Question:** "Does this story contain specific factual claims that can be verified against official sources?"
-- If yes → flag for source verification (even if not flagged for deep investigation)
+Evaluate stories and flag for investigation. Includes "Verifiable Facts" category for stories with dates, numbers, rates. See `/triage` skill for details.
 
 ### VERIFY Phase
-After capturing sources, verification must cross-check content:
-1. Extract all quantitative claims from topic files
-2. Compare each claim against captured source content
-3. Flag discrepancies for correction before synthesis
-
-**Verification Checklist:**
-- [ ] All dates match source documents
-- [ ] All numerical values match source documents
-- [ ] All schedules/timelines match source documents
-- [ ] Time-sensitive data uses most recent source
+Capture sources with SHA256 hashes. Cross-check claims against sources using GPT. See `/verify` skill for details.
 
 ### FACT-VALIDATE Phase (Gate 6)
-Before synthesis, validate all factual accuracy:
-1. All quantitative claims in topic files have been validated against captured sources
-2. Any discrepancies have been corrected
-3. Time-sensitive data has been verified against most recent official source
-
-**Output:** `fact-check.md` documenting:
-- Claims checked
-- Sources used for validation
-- Corrections made (if any)
+Final fact-check before synthesis. All quantitative claims validated by GPT against captured sources. Outputs `fact-check.md`. See `/fact-validate` skill for details.
 
 ## Gate Process (9 Gates)
 
@@ -240,111 +199,22 @@ Claude is prone to hallucinating specific numbers, dates, and rates from trainin
    - All quantitative data must come from tool outputs
 
 2. **Quantitative facts require GPT extraction**
-   - Fetch the source content via osint_get
-   - Pass content to GPT with JSON schema
-   - Use only the GPT-extracted values in summaries
+   - See `/gather` skill for implementation details
 
 3. **Verification uses GPT, not Claude judgment**
-   - Claude does not compare values
-   - GPT performs all claim-vs-source comparisons
-   - GPT structured output ensures grounded responses
+   - See `/verify` and `/fact-validate` skills for implementation
 
 4. **When in doubt, use GPT web_search**
    - Independent verification for critical claims
-   - Returns citations that can be validated
-   - Harder to hallucinate with live search
-
-### GPT Structured Output Pattern
-
-For fact extraction, always use JSON schema:
-```javascript
-mcp_openai.generate_text({
-  model: "gpt-5.2",
-  prompt: `Extract facts from: ${sourceContent}`,
-  json_schema: {
-    name: "fact_extraction",
-    schema: {
-      type: "object",
-      properties: {
-        facts: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              value: { type: "string" },
-              verbatim: { type: "string" }  // Forces grounding
-            },
-            required: ["value", "verbatim"]
-          }
-        }
-      }
-    }
-  },
-  reasoning_effort: "low"
-})
-```
-
-The `verbatim` field forces GPT to quote the source, preventing fabrication.
 
 ### Failure Modes to Avoid
 
 | Failure | How It Happened (RCA-1) | Prevention |
 |---------|-------------------------|------------|
-| Wrong dates | Claude used 2025 training data for 2026 | GPT extracts dates from fetched source |
+| Wrong dates | Claude used 2025 training data for 2026 | GPT extracts from fetched source |
 | Wrong rates | Claude used pre-December rate | GPT web_search verifies current rate |
 | Fabricated probabilities | Claude made up "65%/30%" | Require GPT-extracted verbatim or omit |
 | Unfetched sources | Claude cited URL without reading | Require osint_get before any claims |
-
-## Source Verification Requirements
-
-### Temporal Currency Checks
-For domains with frequent updates, require:
-1. Check source publication date against briefing date
-2. If source is older than threshold, search for more recent source
-
-**Currency Thresholds:**
-| Domain | Max Age |
-|--------|---------|
-| Monetary policy | 7 days |
-| Economic data | 30 days |
-| Legislative status | 7 days |
-| Breaking news | 24 hours |
-
-**Flag in topic file:** `[DATA CURRENCY: Verified as of YYYY-MM-DD]`
-
-### Enhanced Source Capture
-Expand source capture beyond investigated stories:
-1. All sources cited in topic files (not just investigated stories)
-2. Most recent official statement/release for time-sensitive domains:
-   - Monetary policy: Latest FOMC statement/implementation note
-   - Tax policy: Latest IRS guidance
-   - Legislative: Latest bill status from Congress.gov
-   - Local government: Latest official minutes/announcements
-
-### Source-Claim Linking
-Each quantitative claim must link to its source:
-```json
-{
-  "claim": "FOMC meets January 27-28",
-  "source_id": "S002",
-  "source_location": "line 56-57",
-  "verified": true,
-  "verified_at": "2026-01-26T19:00:00Z"
-}
-```
-
-**Benefits:**
-- Audit can verify each claim has valid source
-- Discrepancies are immediately visible
-- Facilitates automated fact-checking
-
-### Multi-Source Verification
-Require 2+ sources for critical data:
-- Financial data (interest rates, market data)
-- Policy announcements (government positions)
-- Numerical claims with high user impact (costs, taxes, deadlines)
-
-**If sources conflict:** Flag for investigation rather than choosing one.
 
 ## Neutrality Requirements
 
