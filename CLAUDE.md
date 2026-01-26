@@ -112,6 +112,7 @@ briefings/YYYY-MM-DD/
 ├── stories.json        # Story registry with IDs, status, sources
 ├── sources.json        # Source registry with URLs, hashes, timestamps
 ├── fact-check.md       # Fact validation results (from VERIFY phase)
+├── audit.md            # Audit results (from AUDIT phase)
 ├── topics/             # One file per interest axis
 ├── investigations/     # Deep investigation outputs
 │   └── INV###/
@@ -198,7 +199,7 @@ Claude is prone to hallucinating specific numbers, dates, and rates from trainin
    - See `/gather` skill for implementation details
 
 3. **Verification uses GPT, not Claude judgment**
-   - See `/verify` and `/fact-validate` skills for implementation
+   - See `/verify` skill for implementation
 
 4. **When in doubt, use GPT web_search**
    - Independent verification for critical claims

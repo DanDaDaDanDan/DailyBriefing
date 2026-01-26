@@ -101,28 +101,25 @@ For each source, document:
 - Original language (if translated)
 - Any known bias or perspective
 
-## Multi-Agent Neutrality Audit
+## Neutrality Audit
 
-### Process (Gate 5)
-Three agents review the briefing:
+### Process (Gate 6)
+Single-pass audit checks all briefing content for:
 
-**Critic Role:**
-- Identify any advocacy language
-- Flag potential bias in story selection
-- Note imbalanced coverage
-- Highlight unsupported claims
+**Language Check:**
+- Scan for forbidden language patterns
+- Identify advocacy framing
+- Flag emotional language
 
-**Defender Role:**
-- Argue for the objectivity of content
-- Provide justification for editorial choices
-- Explain balance in coverage
-- Cite sources for disputed claims
+**Balance Check:**
+- Verify multiple perspectives on controversies
+- Check attribution equality across viewpoints
+- Ensure no favorable framing for any side
 
-**Arbiter Role:**
-- Evaluate critic/defender arguments
-- Make final determination
-- Specify required changes
-- Approve or reject for revision
+**Completeness Check:**
+- Verify proportional axis coverage
+- Confirm high-priority stories included
+- Check word counts within ranges
 
 ### Pass Criteria
 - No advocacy language remains

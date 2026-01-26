@@ -75,10 +75,9 @@ The config file is gitignored for privacy.
     ├── gather/                  # News gathering
     ├── triage/                  # Finding evaluation
     ├── investigate/             # Deep investigation
-    ├── verify/                  # Source verification
+    ├── verify/                  # Source verification & fact validation
     ├── synthesize/              # Briefing generation
-    ├── audit-neutrality/        # Bias detection
-    └── audit-completeness/      # Coverage verification
+    └── audit/                   # Neutrality & completeness check
 ```
 
 ## Gate Process
@@ -90,8 +89,8 @@ The config file is gitignored for privacy.
 | 2 | Gather | All topic files exist |
 | 3 | Triage | Findings evaluated and flagged |
 | 4 | Investigate | Flagged findings explored |
-| 5 | Verify | Sources captured with hashes |
-| 6 | Neutrality | Multi-agent audit passed |
+| 5 | Verify | Sources captured; claims validated via GPT |
+| 6 | Audit | Neutrality and completeness checks pass |
 | 7 | Article | All briefings generated |
 
 ## Neutrality
