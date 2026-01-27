@@ -79,7 +79,7 @@ After initialization, the lead agent:
 4. Proceeds to GATHER with informed strategy
 
 ### GATHER Phase
-Two-step process separating topic discovery from detail gathering:
+Two-step process separating topic discovery from fact gathering:
 
 **Step 1: Topic Discovery (XAI)**
 For each interest axis, use XAI tools (`news_search`, `x_search`, `research`) to identify:
@@ -87,15 +87,15 @@ For each interest axis, use XAI tools (`news_search`, `x_search`, `research`) to
 - Social signals and trending topics
 - Breaking news and developing stories
 
-Output: List of story topics with headlines and brief descriptions. **No specific numbers or precise dates.**
+Output: List of story topics with headlines and qualitative descriptions. **XAI outputs are leads to investigate, not facts to publish.**
 
-**Step 2: Detail Gathering (OpenAI)**
+**Step 2: Fact Gathering (OpenAI)**
 For each discovered topic, use OpenAI `web_search` to find:
-- Precise facts with source citations
-- Specific numbers, rates, dates
-- Disambiguated metrics (CPI vs PCE, etc.)
+- All factual claims with source citations
+- Every number, date, name, quote, or verifiable detail
+- Authoritative sources for official data
 
-Output: Structured facts with source URLs for each story.
+Output: Structured facts with source URLs for each story. **Only OpenAI-sourced facts appear in final briefings.**
 
 See `/gather` skill for implementation details.
 
@@ -103,7 +103,7 @@ See `/gather` skill for implementation details.
 Evaluate stories and flag for investigation. Includes "Verifiable Facts" category for stories with dates, numbers, rates. See `/triage` skill for details.
 
 ### VERIFY Phase
-Capture sources with SHA256 hashes. Use GPT to extract and validate all quantitative claims against captured sources. Outputs `fact-check.md`. See `/verify` skill for details.
+Capture sources with SHA256 hashes. Use OpenAI to extract and validate all factual claims against captured sources. Outputs `fact-check.md`. See `/verify` skill for details.
 
 ## Gate Process (8 Gates)
 
@@ -116,7 +116,7 @@ All gates must pass sequentially. If a gate fails, return to the appropriate pha
 | 2 | Gather | All `topics/*.md` files exist (one per axis from config) |
 | 3 | Triage | All findings evaluated, significant ones flagged in `state.json` |
 | 4 | Investigate | All flagged findings have complete investigations |
-| 5 | Verify | Sources captured with hashes; all quantitative claims validated; `fact-check.md` complete |
+| 5 | Verify | Sources captured with hashes; all factual claims validated; `fact-check.md` complete |
 | 6 | Audit | Neutrality and completeness checks pass |
 | 7 | Article | `short.md`, `detailed.md`, `full.md` generated and pass quality check |
 
@@ -187,103 +187,125 @@ Speed over precision           Precision over speed
 ```
 
 ### mcp-xai (Discovery Layer)
-Use for topic identification and social awareness. **Do NOT rely on XAI for precise quantitative details.**
+Use for topic identification and social awareness. **XAI tells us what to cover, not the facts to publish.**
 
 - `news_search` - Identify newsworthy topics and headlines
 - `x_search` - Social signals, trending topics, breaking news, public sentiment
 - `web_search` - General topic discovery
 - `research` - Multi-source topic aggregation
 
-**XAI Output Should Include:**
-- Story headlines and brief descriptions
-- Why it's newsworthy (social buzz, breaking news, etc.)
-- Keywords for follow-up research
-
-**XAI Output Should NOT Include:**
-- Specific numbers, rates, percentages (let OpenAI find these)
-- Precise dates beyond "today" or "this week"
-- Technical distinctions (CPI vs PCE, etc.)
+**XAI outputs are leads to investigate**, not facts to publish. When XAI returns specific numbers, dates, or details, treat them as search hints for OpenAI verification.
 
 ### mcp-openai (Detail Layer)
-Use for precise fact gathering and verification. Returns citations with URLs.
+Use for all fact gathering and verification. **Every factual claim needs an OpenAI source.**
 
-- `web_search` - **Primary tool for quantitative details** (returns source URLs)
+- `web_search` - **Primary fact verification tool** (returns source URLs)
 - `generate_text` - Structured fact extraction with JSON schemas
 - `deep_research` - In-depth investigation of complex topics
 
-**OpenAI Queries Should Be Specific:**
-- "What is the November 2025 CPI-U year-over-year rate according to BLS?"
-- "What were the FOMC meeting dates in fall 2025?"
-- "What was gold's spot price high on January 26, 2026?"
+**OpenAI queries should be specific and source-directed.** Examples:
+- "Official German Bundestag election results February 2025 Bundeswahlleiter"
+- "Current fed funds target rate Federal Reserve"
+- "Gold spot price January 27 2026"
 
-### mcp-osint (Official/Government Data)
-Use for authoritative government and institutional sources.
+### mcp-osint (Source Capture & Government Data)
+Use for authoritative government sources and for capturing evidence with verification hashes.
 
-- `osint_search` - Government databases, official records
-- `osint_get` - Fetch and capture specific resources with SHA256 hashes
+- `osint_search` - Government databases, official records (elections, regulatory filings, etc.)
+- `osint_get` - Fetch and capture any source with SHA256 hash for verification
+
+**Relationship to OpenAI**: Use OpenAI `web_search` to find and verify facts. Use `osint_get` to capture the authoritative source for the evidence trail. Both serve fact verification; OpenAI finds facts, OSINT preserves evidence.
 
 ## Model Responsibilities & Anti-Hallucination Strategy
 
 ### Core Principle
-**XAI discovers topics; OpenAI gathers details; Claude orchestrates and writes.**
 
-Each model has distinct strengths. The system separates concerns to leverage these strengths and mitigate weaknesses:
+**If a claim could be wrong, verify it with OpenAI.**
 
-- **XAI (Grok)**: Excellent real-time awareness, social integration, speed. Weak on precision for similar concepts.
-- **OpenAI (GPT)**: Excellent precision, structured output, source citations. Slower, less real-time.
-- **Claude**: Excellent orchestration, synthesis, writing quality. Prone to training-data hallucination.
+This single rule replaces enumerated categories. Don't ask "is this type of fact on our verification list?" Ask "could this be incorrect?" If yes, use OpenAI web_search.
 
-### Model Division by Task
+### Model Roles
 
-| Task | Model | Rationale |
-|------|-------|-----------|
-| Workflow orchestration | Claude | Planning and coordination |
-| **Topic discovery** | **XAI** | Real-time news/social awareness |
-| **Social signals & X content** | **XAI** | Native Twitter/X integration |
-| **Quantitative details** | **OpenAI** | Precision + source citations |
-| **Economic indicators** | **OpenAI** | Disambiguation required (CPI vs PCE, etc.) |
-| **Dates & schedules** | **OpenAI** | Verify against official calendars |
-| Fact verification | OpenAI | Grounded web_search with URLs |
-| Deep investigation | OpenAI | Thorough multi-source research |
-| Qualitative synthesis | Claude | Writing quality and coherence |
-| Final briefing writing | Claude | Narrative construction |
+| Model | Role | Provides |
+|-------|------|----------|
+| **XAI** | News wire editor | "Here's what's happening—go cover it" |
+| **OpenAI** | Fact checker | "Here are the verified details with sources" |
+| **Claude** | Writer | "I'll craft the narrative from verified facts only" |
+
+### What XAI Provides (Discovery Only)
+
+XAI's scope is **narrowly limited** to topic discovery:
+
+- **Story identification**: "There's news about X"
+- **Newsworthiness signals**: "This is trending / breaking / significant because..."
+- **Qualitative framing**: "This is seen as hawkish / controversial / unexpected"
+- **Social context**: "Public reaction on X includes..."
+
+### What XAI Does NOT Provide
+
+XAI should not provide any factual claim that could be verified or falsified:
+
+- ❌ Numbers (rates, prices, percentages, counts, vote totals)
+- ❌ Dates (meeting dates, release dates, event dates, historical dates)
+- ❌ Names and titles (verify spelling, current titles, affiliations)
+- ❌ Quotes (verify exact wording)
+- ❌ Historical facts (what happened, when, outcomes)
+- ❌ Current facts (status, measurements, official positions)
+- ❌ Comparisons (changes from baseline, rankings, records)
+
+**If XAI provides any of the above, treat it as a lead to investigate, not a fact to publish.**
+
+### What OpenAI Provides (All Facts)
+
+Every factual claim in the final briefing must come from OpenAI with a source citation:
+
+- `web_search` - Primary tool for fact verification (returns source URLs)
+- `generate_text` - Structured extraction from fetched content
+- `deep_research` - Complex topics requiring multiple sources
+
+### Decision Flowchart
+
+```
+Is this claim about WHAT is newsworthy?
+  → YES: XAI can provide it
+  → NO: Continue...
+
+Could this claim be wrong?
+  → YES: OpenAI must verify it
+  → NO: (This almost never happens—verify anyway)
+```
 
 ### Anti-Hallucination Rules
 
-1. **Claude MUST NOT generate quantitative claims from memory**
-   - No dates, rates, percentages, or specific numbers from training data
-   - All quantitative data must come from OpenAI tool outputs
+1. **Claude writes prose, not facts**
+   - Claude's role is narrative construction from verified inputs
+   - If a fact isn't in an MCP tool result with a source, it doesn't go in the briefing
+   - "I think..." or "I recall..." → Use OpenAI web_search instead
 
-2. **XAI discovers WHAT, OpenAI discovers HOW MUCH/WHEN**
-   - XAI: "Fed held rates steady" ✓
-   - XAI: "Fed funds rate is 3.5%-3.75%" ✗ (let OpenAI verify)
-   - OpenAI: "Fed funds rate is 3.5%-3.75% per federalreserve.gov" ✓
+2. **XAI outputs are leads, not facts**
+   - XAI: "Fed held rates steady" → OpenAI: "What is the current fed funds rate?"
+   - XAI: "German election showed AfD gains" → OpenAI: "Official German election results 2025"
+   - XAI: "Gold hit record high" → OpenAI: "Gold spot price January 27 2026"
 
-3. **Economic indicators require explicit disambiguation**
-   - Never say "inflation" without specifying CPI-U, Core CPI, PCE, or Core PCE
-   - Always include the source agency (BLS for CPI, BEA for PCE)
-   - Use OpenAI web_search to find the specific metric
+3. **When uncertain, verify**
+   - The cost of an unnecessary verification is low (one API call)
+   - The cost of publishing a wrong fact is high (credibility damage)
+   - Default to verification
 
-4. **Dates and schedules require official source verification**
-   - FOMC meeting dates → verify against Federal Reserve calendar
-   - Economic release dates → verify against BLS/BEA calendars
-   - Use OpenAI web_search: "FOMC meeting dates 2025 federalreserve.gov"
+### Common Failure Patterns
 
-5. **When in doubt, use OpenAI web_search**
-   - Returns source URLs for verification
-   - Provides grounded answers, not training-data recall
+These illustrate the principle—they are not an exhaustive list:
 
-### Failure Modes to Avoid
+| Pattern | Example | Prevention |
+|---------|---------|------------|
+| Stale data | Wrong current rates/prices | OpenAI web_search for current figures |
+| Approximation | Numbers off by small amounts | Require exact figures from authoritative sources |
+| Conflation | Similar metrics confused (CPI vs PCE) | OpenAI query must name specific metric |
+| Omission | Incomplete data (missing parties, categories) | Use authoritative sources with complete data |
+| Assumed schedules | Wrong meeting/event dates | Verify against official calendars |
+| Training bleed | Claude/XAI uses training data as fact | Only MCP tool outputs with sources are facts |
 
-| Failure | Root Cause | Prevention |
-|---------|------------|------------|
-| Wrong dates | Claude used training data for future dates | OpenAI extracts from fetched source |
-| Wrong rates | Claude used stale training data | OpenAI web_search verifies current rate |
-| Fabricated probabilities | Claude invented statistics | Require OpenAI-extracted verbatim or omit |
-| Unfetched sources | Claude cited URL without reading | Require osint_get before any claims |
-| **CPI/PCE conflation** | **XAI conflated similar metrics (RCA-2)** | **OpenAI gathers all economic indicators with explicit metric names** |
-| **Wrong meeting months** | **Assumed monthly meetings exist** | **OpenAI verifies against official calendars** |
-| **Imprecise price data** | **XAI approximated market figures** | **OpenAI web_search for specific prices with sources** |
+**When a new failure pattern emerges**: It likely fits the general principle already. Ask "could this claim be wrong?" and the answer determines whether verification was needed.
 
 ## Neutrality Requirements
 
@@ -294,7 +316,7 @@ Each model has distinct strengths. The system separates concerns to leverage the
 - **Partisan labels**: far-left, far-right, extremist (describe positions instead)
 
 ### Required Practices
-1. **Attribution**: "According to [source]...", "X reported that..."
+1. **Attribution**: "According to [source]...", "[Organization] reported that..."
 2. **Uncertainty markers**: "reportedly", "sources say", "allegedly"
 3. **Multiple perspectives**: Include opposing viewpoints on controversies
 4. **Opinion separation**: Clearly mark editorial/opinion content
@@ -348,4 +370,3 @@ Single-pass check for neutrality and completeness. See `/audit` skill for detail
 - Source links and verification status
 - Investigation details
 - Suitable for archival
-
