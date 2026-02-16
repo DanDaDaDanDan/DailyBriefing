@@ -319,6 +319,8 @@ These illustrate the principle—they are not an exhaustive list:
 
 ## Neutrality Requirements
 
+**The briefing never takes a position — it reports what others say.**
+
 ### Forbidden Language
 - **Verdict words**: confirmed, debunked, proven, false, true, fact-checked
 - **Advocacy framing**: must, should, need to, important that, clearly
