@@ -42,6 +42,25 @@ For each controversial topic:
 - Is attribution equal across perspectives?
 - Is any viewpoint given more favorable framing?
 
+### Forbidden Language Exceptions
+
+The following are explicit exceptions to the forbidden language rules. When these patterns are detected, they should NOT be flagged as violations:
+
+1. **Legal/regulatory requirement language:** Phrases like "employers must inform employees", "companies are required to comply", or "the law requires disclosure" are acceptable when they describe objectively factual legal obligations. The word "must" in a regulatory context is a statement of legal fact, not advocacy.
+
+2. **Direct quotes containing forbidden words:** If a source is directly quoted and the quote contains forbidden language (e.g., a politician saying "we must act"), the quote is acceptable as long as it is properly attributed with quotation marks and source citation. The audit should verify the attribution exists, not flag the word.
+
+3. **How to document exceptions in audit.md:**
+   ```markdown
+   ### Language Exceptions Applied
+   | Location | Text | Rule | Exception Reason |
+   |----------|------|------|------------------|
+   | detailed.md:55 | "employers must file" | Advocacy ("must") | Legal requirement language |
+   | detailed.md:102 | "we must act now" - Sen. X | Advocacy ("must") | Direct quote, attributed |
+   ```
+
+If a flagged term does not fall into one of these exception categories, it remains a violation and must be corrected.
+
 ### 3. Completeness Check
 
 **Axis Coverage:**

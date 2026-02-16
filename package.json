@@ -8,7 +8,9 @@
     "init:date": "node scripts/init-briefing.js --date",
     "check": "node scripts/check-continue.js",
     "verify": "node scripts/verify-source.js",
-    "pdf": "node scripts/generate-pdf.js"
+    "pdf": "node scripts/generate-pdf.js",
+    "cleanup": "node scripts/cleanup.js",
+    "cleanup:dry": "node scripts/cleanup.js --dry-run"
   },
   "keywords": [
     "news",

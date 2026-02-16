@@ -59,6 +59,52 @@ mcp_osint.osint_search({
 })
 ```
 
+### 2a. Official Source Routing
+
+Before falling back to general OpenAI web_search, route stories to specialized OSINT connectors based on topic domain:
+
+**Monetary Policy / Federal Reserve:**
+```javascript
+mcp_osint.osint_search({
+  source: "fred",
+  query: "federal funds rate",  // or other FRED series
+  limit: 10
+})
+```
+Use for: interest rate decisions, money supply data, inflation metrics, Treasury yields, FOMC-related data.
+
+**Economic / Housing / Employment Data:**
+```javascript
+mcp_osint.osint_search({
+  source: "census",
+  query: "housing starts 2026",  // or employment, GDP components
+  limit: 10
+})
+```
+Use for: housing starts, employment figures, demographic data, trade statistics, Census Bureau releases.
+
+**Corporate / SEC Stories:**
+```javascript
+mcp_osint.osint_search({
+  source: "sec_edgar",
+  query: "Apple 10-K 2025",  // or any company filing
+  limit: 10
+})
+```
+Use for: earnings filings, 10-K/10-Q reports, insider trading disclosures, corporate governance changes.
+
+**Legislative / Policy Changes:**
+```javascript
+mcp_osint.osint_search({
+  source: "legiscan",
+  query: "data privacy bill",  // or specific bill numbers
+  limit: 10
+})
+```
+Use for: bill status, voting records, legislative text, sponsor information, committee actions.
+
+**Fallback:** If an OSINT connector returns no results or insufficient data, fall back to `mcp_openai.web_search` with a specific authoritative query. Always prefer OSINT connectors first because they return structured, authoritative government data.
+
 ### 3. Deduplicate and Structure
 
 Merge results:
@@ -236,6 +282,27 @@ stories.stories.push(...newStories);
 stories.lastUpdated = new Date().toISOString();
 fs.writeFileSync('stories.json', JSON.stringify(stories, null, 2));
 ```
+
+## Social Media Content Handling
+
+When processing content from X/Twitter (via `mcp_xai.x_search` or `mcp_xai.research` with `"x"` source):
+
+1. **Separate social signals from facts.** Social media posts indicate what people are discussing, not what is true. Structure social content separately from verified reporting.
+
+2. **Mark sentiment as unverified.** When including social reaction or sentiment, always label it:
+   ```
+   **Social Sentiment (Unverified):** Users on X are discussing...
+   ```
+
+3. **Never publish unverified X/Twitter claims as facts.** A tweet -- even from an official-looking account -- is not a verified source unless corroborated by OpenAI web_search or an OSINT connector.
+
+4. **Acceptable vs. unacceptable framing:**
+   - OK: "Social media users are discussing potential changes to..."
+   - OK: "The announcement generated significant reaction on X, with users debating..."
+   - NOT OK: "Changes are coming to..." (based solely on tweets)
+   - NOT OK: "Sources confirm..." (when the only source is social media)
+
+5. **Social signals ARE useful for:** identifying breaking news leads, gauging public reaction to verified events, discovering trending topics for further investigation.
 
 ## Neutrality During Gathering
 

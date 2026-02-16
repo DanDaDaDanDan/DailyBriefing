@@ -26,6 +26,46 @@ Read all source material:
 - `stories.json` - Story metadata and priorities
 - `sources.json` - Verified source references
 
+### 1a. Quantitative Claims Validation
+
+Before generating any prose, build an "approved facts" list from all source material. This is the single source of truth for every number, date, rate, and percentage in the final briefings.
+
+**Step 1: Extract approved facts**
+
+Scan every `topics/*.md` file and `investigations/*/findings.md` for extracted claims (look for "Extracted Facts (via GPT)" sections, verbatim quotes, and source-attributed data). Compile them into a flat list:
+
+```
+APPROVED FACTS:
+- [FACT-001] Fed funds rate: 4.25-4.50% (Source: S003, FRED)
+- [FACT-002] January CPI: 3.1% year-over-year (Source: S007, BLS)
+- [FACT-003] FOMC next meeting: March 18-19, 2026 (Source: S003, Federal Reserve)
+- ...
+```
+
+**Step 2: Enforce the approved list**
+
+ALL numbers, dates, rates, and percentages that appear in `short.md`, `detailed.md`, or `full.md` MUST come from this approved list. No exceptions.
+
+- If a number is tempting to include but is not in the approved list, do not include it.
+- If you recall a figure from earlier in the workflow but it did not make it into the extracted claims, do not include it.
+- If a data-heavy section would benefit from a statistic you do not have approved, write around it qualitatively rather than guessing.
+
+**Step 3: Quote with attribution**
+
+For data-heavy sections, prefer quoting facts directly from the approved list with source attribution:
+
+```markdown
+According to Federal Reserve data, the federal funds rate stands at 4.25-4.50% (Source: FRED).
+```
+
+Rather than:
+
+```markdown
+The Fed's rate is around 4.25-4.50%.
+```
+
+The first form is traceable; the second invites drift.
+
 ### 2. Prioritize Content
 
 Rank stories by:

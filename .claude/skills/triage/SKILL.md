@@ -54,6 +54,7 @@ Create flagged finding entries:
   axis: "axis-id",
   storyId: "STY005",      // Reference to original story
   title: "Descriptive title for investigation",
+  complexity: "high|medium|low",  // Determines investigation depth and tool selection
   priority: "high|medium",
   reason: "Why this needs investigation",
   angles: [               // Suggested investigation angles
@@ -125,6 +126,16 @@ Flag for source verification (even if not for deep investigation) any story cont
 - Official announcements or policy positions
 
 **Triage Question:** "Does this story contain specific factual claims that can be verified against official sources?" If yes → flag for source verification.
+
+**Complexity Assignment:**
+
+When flagging a finding, assign a `complexity` value that the `/investigate` skill will use to select appropriate tools and depth:
+
+| Complexity | Criteria | Examples |
+|------------|----------|----------|
+| `high` | Cross-domain relationships, methodology questions, causation claims, policy implications | Fed rate impact on housing, polling methodology disputes, trade policy supply chain effects |
+| `medium` | Multi-angle stories with clear stakeholders, events with some contested facts | Major legislation, merger announcements, regulatory actions |
+| `low` | Single-narrative stories, clear authoritative sources, routine updates | Official appointments, scheduled data releases, straightforward factual verification |
 
 **DON'T flag:**
 - Minor updates to ongoing stories

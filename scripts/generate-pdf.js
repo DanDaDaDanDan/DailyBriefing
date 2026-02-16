@@ -9,14 +9,17 @@
  * Generates PDFs for short.md, detailed.md, and full.md
  *
  * Exit codes:
- *   0 - Success
- *   1 - Generation failed
+ *   0 - All PDFs generated successfully
+ *   1 - Some PDFs fell back to HTML (partial success)
  *   2 - Invalid arguments
+ *   3 - Fatal error (no output generated at all)
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
+const { DIRECTORIES, REPORT_FORMATS } = require('./utils/constants');
+const { fileExists, logResult } = require('./utils/file');
 
 /**
  * Check if a command exists
@@ -48,14 +51,14 @@ async function convertToPdf(mdPath, pdfPath) {
             execSync(`pandoc "${mdPath}" -o "${pdfPath}" --pdf-engine=pdflatex`, {
                 stdio: 'inherit'
             });
-            return { success: true, method: 'pandoc' };
+            return { success: true, method: 'pandoc', format: 'pdf', output: path.basename(pdfPath) };
         } catch (e) {
             // Try without latex
             try {
                 execSync(`pandoc "${mdPath}" -o "${pdfPath}"`, {
                     stdio: 'inherit'
                 });
-                return { success: true, method: 'pandoc-default' };
+                return { success: true, method: 'pandoc-default', format: 'pdf', output: path.basename(pdfPath) };
             } catch {
                 // Continue to next method
             }
@@ -70,7 +73,7 @@ async function convertToPdf(mdPath, pdfPath) {
                 .from(mdPath)
                 .to(pdfPath, (err) => {
                     if (err) reject(err);
-                    else resolve({ success: true, method: 'markdown-pdf' });
+                    else resolve({ success: true, method: 'markdown-pdf', format: 'pdf', output: path.basename(pdfPath) });
                 });
         });
     } catch {
@@ -83,7 +86,7 @@ async function convertToPdf(mdPath, pdfPath) {
         const pdf = await mdToPdf({ path: mdPath });
         if (pdf) {
             fs.writeFileSync(pdfPath, pdf.content);
-            return { success: true, method: 'md-to-pdf' };
+            return { success: true, method: 'md-to-pdf', format: 'pdf', output: path.basename(pdfPath) };
         }
     } catch {
         // Package not installed
@@ -94,9 +97,13 @@ async function convertToPdf(mdPath, pdfPath) {
     const html = generateHtml(mdContent, path.basename(mdPath, '.md'));
     fs.writeFileSync(htmlPath, html);
 
+    console.warn(`Warning: PDF generation failed for ${path.basename(mdPath)}, falling back to HTML: no PDF conversion tools available`);
+
     return {
-        success: false,
+        success: true,
         fallback: 'html',
+        format: 'html',
+        output: path.basename(htmlPath),
         htmlPath: htmlPath,
         message: 'PDF generation tools not available. HTML version created instead.'
     };
@@ -165,23 +172,24 @@ function generateHtml(mdContent, title) {
  * Generate all PDFs for a briefing
  */
 async function generateAllPdfs(briefingDir) {
-    const outputDir = path.join(briefingDir, 'briefings');
+    const outputDir = path.join(briefingDir, DIRECTORIES.briefings);
 
-    if (!fs.existsSync(outputDir)) {
+    if (!fileExists(outputDir)) {
         return { success: false, error: 'Briefings directory not found' };
     }
 
-    const files = ['short.md', 'detailed.md', 'full.md'];
     const results = [];
 
-    for (const file of files) {
+    for (const file of REPORT_FORMATS) {
         const mdPath = path.join(outputDir, file);
         const pdfPath = path.join(outputDir, file.replace('.md', '.pdf'));
 
-        if (!fs.existsSync(mdPath)) {
+        if (!fileExists(mdPath)) {
             results.push({
                 file: file,
                 success: false,
+                format: null,
+                output: null,
                 error: 'Source file not found'
             });
             continue;
@@ -191,13 +199,15 @@ async function generateAllPdfs(briefingDir) {
             const result = await convertToPdf(mdPath, pdfPath);
             results.push({
                 file: file,
-                ...result,
-                pdfPath: pdfPath
+                ...result
             });
         } catch (error) {
+            console.warn(`Warning: PDF generation failed for ${file}, falling back to HTML: ${error.message}`);
             results.push({
                 file: file,
                 success: false,
+                format: null,
+                output: null,
                 error: error.message
             });
         }
@@ -225,7 +235,7 @@ async function main() {
 
     const briefingDir = args[0];
 
-    if (!fs.existsSync(briefingDir)) {
+    if (!fileExists(briefingDir)) {
         console.error(`Briefing directory not found: ${briefingDir}`);
         process.exit(2);
     }
@@ -235,24 +245,24 @@ async function main() {
     try {
         const result = await generateAllPdfs(briefingDir);
 
-        console.log('=== PDF_RESULT ===');
-        console.log(JSON.stringify(result, null, 2));
+        logResult('PDF_RESULT', result);
 
-        if (result.success) {
+        const hasHtmlFallback = result.results.some(r => r.fallback === 'html');
+        const hasFatalError = result.results.some(r => !r.success && r.fallback !== 'html');
+
+        if (hasFatalError) {
+            console.error('\nFatal: Some outputs could not be generated at all');
+            process.exit(3);
+        } else if (hasHtmlFallback) {
+            console.warn('Warning: Some outputs fell back to HTML format');
+            process.exit(1);
+        } else {
             console.log('\nAll PDFs generated successfully');
             process.exit(0);
-        } else {
-            console.log('\nSome PDFs could not be generated');
-            console.log('HTML versions may have been created as fallback');
-            // Exit 0 even if fallback to HTML (not a fatal error)
-            const hasFatalError = result.results.some(r =>
-                !r.success && r.fallback !== 'html' && r.error !== 'Source file not found'
-            );
-            process.exit(hasFatalError ? 1 : 0);
         }
     } catch (error) {
-        console.error(`Error: ${error.message}`);
-        process.exit(1);
+        console.error(`Fatal error: ${error.message}`);
+        process.exit(3);
     }
 }
 

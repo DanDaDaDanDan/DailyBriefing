@@ -8,6 +8,37 @@ Performs in-depth research on flagged findings. Runs as parallel subagent per fi
 /investigate <finding-id> <briefing-dir>
 ```
 
+## Complexity Scoring
+
+Before beginning the investigation, assess the finding's complexity level. This determines which tools and how much depth to apply.
+
+**HIGH Complexity:**
+- Economic/monetary policy relationships (e.g., rate decisions and their market effects)
+- Polling methodology analysis (e.g., conflicting polls, sampling questions)
+- Market causation claims (e.g., "X caused Y to drop")
+- Policy implications requiring cross-domain understanding (e.g., trade policy effects on supply chains)
+- Multi-party geopolitical situations with competing narratives
+
+**MEDIUM Complexity:**
+- Standard news events with multiple angles (e.g., major legislation passing)
+- Industry developments with clear stakeholders (e.g., merger announcements)
+- Events with some contested facts but clear primary sources
+
+**LOW Complexity:**
+- Straightforward factual stories with authoritative sources (e.g., official appointments)
+- Events with a single clear narrative and no significant disputes
+- Updates to ongoing stories where the baseline context is well-established
+
+### Tool Selection by Complexity
+
+| Complexity | Primary Tool | Rationale |
+|------------|-------------|-----------|
+| HIGH | `mcp_openai.deep_research` (timeout_minutes: 10) | Requires multi-source synthesis and reasoning across domains |
+| MEDIUM | `mcp_xai.research` + `mcp_openai.web_search` | Sufficient depth from aggregated search plus fact verification |
+| LOW | `mcp_openai.web_search` | Simple verification against authoritative sources |
+
+**HIGH complexity findings MUST use `mcp_openai.deep_research`** rather than `mcp_xai.research` as the primary investigation tool. XAI research is faster but lacks the depth needed for nuanced economic, policy, or methodological analysis. Use XAI as a supplementary source for social signals and additional perspectives, not as the primary investigative engine for complex topics.
+
 ## Process
 
 ### 1. Load Finding Details

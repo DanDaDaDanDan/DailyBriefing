@@ -48,6 +48,28 @@ Your interests file should be **lightweight and curiosity-driven**:
 
 The config file is gitignored for privacy.
 
+### Example Configuration
+
+```markdown
+## Tech Industry
+I work in software engineering. Interested in AI developments, major tech company
+news, startup funding trends, and programming language ecosystem changes.
+
+## Personal Finance
+Care about investment strategies, tax law changes, retirement planning,
+and economic indicators that affect savings and market performance.
+
+## Local News
+I live in Raleigh, NC. Care about local development, schools, traffic,
+city council decisions, and regional business news.
+```
+
+**Tips:**
+- Use `##` headings for each interest area (these become briefing sections)
+- Write 2-3 sentences describing what you care about and why
+- Provide context (e.g., "I work in software") to help prioritize relevance
+- Keep it high-level -- the system determines sources and search strategies
+
 ## Project Structure
 
 ```
@@ -91,7 +113,7 @@ The config file is gitignored for privacy.
 | 4 | Investigate | Flagged findings explored |
 | 5 | Verify | Sources captured; claims validated via GPT |
 | 6 | Audit | Neutrality and completeness checks pass |
-| 7 | Article | All briefings generated |
+| 7 | Article | `short.md`, `detailed.md`, `full.md` generated and pass quality check |
 
 ## Neutrality
 
@@ -105,13 +127,15 @@ The system enforces strict neutrality:
 
 A three-agent debate (Critic, Defender, Arbiter) audits every briefing.
 
-## MCP Servers Used
+## MCP Servers
 
-| Server | Purpose |
-|--------|---------|
-| mcp-xai | Real-time news, social media, web search |
-| mcp-osint | Government and official sources |
-| mcp-openai | Deep research and verification |
+| Server | Layer | Purpose |
+|--------|-------|---------|
+| mcp-xai | Discovery | Topic identification via news, social media, and web search |
+| mcp-openai | Verification | Fact checking, source-grounded citations, deep research |
+| mcp-osint | Evidence | Government databases, official records, source capture with SHA256 hashes |
+
+The system uses a **discovery --> verification** pipeline: XAI identifies what is newsworthy, OpenAI verifies the facts, and OSINT captures authoritative sources for the evidence trail.
 
 ## Commands
 
@@ -119,6 +143,30 @@ A three-agent debate (Critic, Defender, Arbiter) audits every briefing.
 |---------|---------|
 | `/brief` | Start new daily briefing |
 | `/brief --status` | Show current progress |
+
+## Utility Scripts
+
+| Command | Purpose |
+|---------|---------|
+| `npm run init` | Initialize briefing for today's date |
+| `npm run init:date -- --date YYYY-MM-DD` | Initialize for a specific date |
+| `npm run check -- briefings/YYYY-MM-DD` | Check gate progression and status |
+| `npm run verify -- <url> <briefing-dir>` | Capture and verify a source with SHA256 hash |
+| `npm run pdf -- briefings/YYYY-MM-DD` | Generate PDF versions of briefings |
+
+## Troubleshooting
+
+**"interests.md not found"**
+Run `/brief` and the system will ask about your interests and create the config file. Or manually create `briefings/config/interests.md` following the example above.
+
+**A gate fails during briefing generation**
+Check `state.json` in the briefing directory to see the current phase and any errors. Use `npm run check -- briefings/YYYY-MM-DD` to diagnose which gate criteria are not met.
+
+**Briefings are below word count targets**
+Word count targets are guidelines, not hard requirements. The system prioritizes covering all significant stories with verified facts over hitting arbitrary word counts.
+
+**Resuming an interrupted briefing**
+Run `/brief` again -- the system detects existing state and resumes from the last completed gate. To target a specific date: initialize with `npm run init:date -- --date YYYY-MM-DD`, then run `/brief`.
 
 ## License
 

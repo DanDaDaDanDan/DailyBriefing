@@ -67,6 +67,8 @@ For investigation (one agent per flagged finding):
 INIT → PLAN → GATHER → TRIAGE → INVESTIGATE → VERIFY → SYNTHESIZE → AUDIT → FINALIZE → COMPLETE
 ```
 
+FINALIZE updates state to COMPLETE, generates any final metadata. COMPLETE is the terminal state. Both FINALIZE and COMPLETE are post-audit phases with no associated gate.
+
 ### PLAN Phase
 After initialization, the lead agent:
 1. Reads the lightweight interest config
@@ -117,8 +119,8 @@ All gates must pass sequentially. If a gate fails, return to the appropriate pha
 | 3 | Triage | All findings evaluated, significant ones flagged in `state.json` |
 | 4 | Investigate | All flagged findings have complete investigations |
 | 5 | Verify | Sources captured with hashes; all factual claims validated; `fact-check.md` complete |
-| 6 | Audit | Neutrality and completeness checks pass |
-| 7 | Article | `short.md`, `detailed.md`, `full.md` generated and pass quality check |
+| 6 | Synthesize | `short.md`, `detailed.md`, `full.md` generated |
+| 7 | Audit | Neutrality and completeness checks pass; `audit.md` exists with PASS status |
 
 ## State Management
 
@@ -153,9 +155,15 @@ briefings/YYYY-MM-DD/
   "currentGate": 0,
   "gatesPassed": [],
   "phase": "INIT|PLAN|GATHER|TRIAGE|INVESTIGATE|VERIFY|SYNTHESIZE|AUDIT|FINALIZE|COMPLETE",
-  "axes": ["<axis-slug>", "..."],  // 1-N axes, derived from config headers
-  "flaggedFindings": [],
-  "errors": []
+  "axes": ["<axis-slug>"],
+  "axesConfig": [{"name": "...", "id": "...", "description": "..."}],
+  "axisStatus": {"<axis-slug>": {"status": "pending|complete|failed", "storiesFound": 0}},
+  "flaggedFindings": [{"id": "XX-###", "title": "...", "axis": "...", "priority": "high|medium", "complexity": "high|medium|low", "investigated": false}],
+  "configChecksum": "sha256:...",
+  "configVersion": "1.0",
+  "errors": [],
+  "createdAt": "ISO timestamp",
+  "updatedAt": "ISO timestamp"
 }
 ```
 
@@ -255,6 +263,8 @@ XAI should not provide any factual claim that could be verified or falsified:
 
 **If XAI provides any of the above, treat it as a lead to investigate, not a fact to publish.**
 
+**Clarification:** XAI may return headlines or summaries that naturally contain dates, numbers, or names as part of topic identification. This is acceptable — they serve as leads for OpenAI to verify. The rule is: **don't treat XAI-provided specifics as facts to publish**. Always independently verify through OpenAI before including in the briefing.
+
 ### What OpenAI Provides (All Facts)
 
 Every factual claim in the final briefing must come from OpenAI with a source citation:
@@ -315,6 +325,12 @@ These illustrate the principle—they are not an exhaustive list:
 - **Emotional language**: shocking, outrageous, unprecedented (unless quoting)
 - **Partisan labels**: far-left, far-right, extremist (describe positions instead)
 
+**Exceptions:**
+- Legal/regulatory requirement language is acceptable when objectively factual (e.g., "employers must inform employees" describing a law)
+- Direct quotes from sources may contain forbidden words if properly attributed (e.g., 'The spokesperson called it "unprecedented"')
+
+*For comprehensive neutrality guidelines including examples and regional considerations, see `reference/neutrality-guidelines.md`.*
+
 ### Required Practices
 1. **Attribution**: "According to [source]...", "[Organization] reported that..."
 2. **Uncertainty markers**: "reportedly", "sources say", "allegedly"
@@ -322,7 +338,7 @@ These illustrate the principle—they are not an exhaustive list:
 4. **Opinion separation**: Clearly mark editorial/opinion content
 5. **Context provision**: Include relevant background without editorializing
 
-### Audit (Gate 6)
+### Audit (Gate 7)
 Single-pass check for neutrality and completeness. See `/audit` skill for details.
 
 **Neutrality Checks:**
@@ -344,29 +360,48 @@ Single-pass check for neutrality and completeness. See `/audit` skill for detail
 
 ## Error Handling
 
-1. **Config missing**: Use AskUserQuestion to ask about interests, then create `briefings/config/interests.md`
-2. **MCP failure**: Retry with backoff, log error, continue with available data
-3. **Gate failure**: Log specifics, return to appropriate phase
-4. **Verification failure**: Flag source as unverified, exclude from final briefing
+### MCP Failures
+- **Retry strategy**: Exponential backoff (1s, 2s, 4s, 8s max), up to 3 retries
+- **Partial success**: Continue with available data, note gaps in output
+- **Source fallback chain**: Official OSINT source → OpenAI web_search → news aggregator → mark unverified
+- **Circuit breaker**: If 3+ consecutive calls to same MCP server fail, pause 60 seconds before retrying
 
-## Output Quality Standards
+### Gate Failures
+- Log specific failure reason to `state.json` errors array
+- Return to appropriate phase for retry
+- Do not advance until gate criteria fully met
 
-### short.md (500-900 words)
+### Verification Failures
+- Flag source as unverified in fact-check.md
+- Add "Partially Verified Claims" section to fact-check.md
+- Exclude unverified claims from short.md and detailed.md
+- Include with caveat in full.md only
+
+### Config Issues
+- Missing config: Use AskUserQuestion to gather interests, create interests.md
+- Changed config mid-workflow: Log warning, continue with original config stored in state.json
+
+## Output Quality Guidelines
+
+### short.md (Target: 500-900 words)
 - Executive summary format
 - Top 3-5 stories per axis
 - No deep analysis, just facts
 - Quick morning read (3-5 min)
+- *Acceptable range: 400-1,000 words. Quality and completeness take precedence over word count.*
 
-### detailed.md (2,000-4,000 words)
+### detailed.md (Target: 2,000-4,000 words)
 - Comprehensive daily briefing
 - Full coverage of significant stories
 - Context and background included
 - Analysis with attribution
 - Read time: 10-15 min
+- *Acceptable range: 1,500-5,000 words. All significant stories must be covered.*
 
-### full.md (Unlimited)
+### full.md (Target: 5,000+ words)
 - Complete coverage with all sources
 - Methodology documentation
 - Source links and verification status
 - Investigation details
 - Suitable for archival
+- *No hard minimum. Completeness of source documentation is the priority.*

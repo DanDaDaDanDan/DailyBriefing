@@ -7,13 +7,82 @@
  * Usage: node check-continue.js <briefing-dir>
  *
  * Exit codes:
- *   0 - Continue (more work to do)
- *   1 - Stop (complete or error)
+ *   0 - Continue / gate passed (proceed to next phase)
+ *   1 - Gate failed (need to complete current phase work)
  *   2 - Invalid arguments
+ *   3 - System error (corrupt state, missing files)
  */
 
 const fs = require('fs');
 const path = require('path');
+const { DIRECTORIES, FILES, PHASES, REPORT_FORMATS, ID_PREFIXES } = require('./utils/constants');
+const { loadJSON, fileExists, logResult } = require('./utils/file');
+
+/**
+ * Valid phase values for validation
+ */
+const VALID_PHASES = Object.values(PHASES);
+
+/**
+ * Maximum gate number in the system
+ */
+const MAX_GATE = 7;
+
+/**
+ * Validate state.json schema.
+ * Logs warnings for invalid fields but does not throw.
+ * @param {object} state - Parsed state object
+ * @returns {string[]} Array of warning messages (empty if valid)
+ */
+function validateState(state) {
+    const warnings = [];
+
+    // currentGate is a number between 0 and MAX_GATE
+    if (typeof state.currentGate !== 'number' || state.currentGate < 0 || state.currentGate > MAX_GATE) {
+        warnings.push(`currentGate should be a number between 0 and ${MAX_GATE}, got: ${JSON.stringify(state.currentGate)}`);
+    }
+
+    // phase is a valid PHASES value
+    if (!VALID_PHASES.includes(state.phase)) {
+        warnings.push(`phase should be one of [${VALID_PHASES.join(', ')}], got: ${JSON.stringify(state.phase)}`);
+    }
+
+    // gatesPassed is an array with no duplicates and all values 0-MAX_GATE
+    if (!Array.isArray(state.gatesPassed)) {
+        warnings.push(`gatesPassed should be an array, got: ${typeof state.gatesPassed}`);
+    } else {
+        const uniqueGates = new Set(state.gatesPassed);
+        if (uniqueGates.size !== state.gatesPassed.length) {
+            warnings.push(`gatesPassed contains duplicates: ${JSON.stringify(state.gatesPassed)}`);
+        }
+        const invalidGates = state.gatesPassed.filter(g => typeof g !== 'number' || g < 0 || g > MAX_GATE);
+        if (invalidGates.length > 0) {
+            warnings.push(`gatesPassed contains invalid gate numbers: ${JSON.stringify(invalidGates)}`);
+        }
+    }
+
+    // axes is a non-empty array of strings
+    if (!Array.isArray(state.axes) || state.axes.length === 0) {
+        warnings.push(`axes should be a non-empty array of strings, got: ${JSON.stringify(state.axes)}`);
+    } else {
+        const nonStrings = state.axes.filter(a => typeof a !== 'string');
+        if (nonStrings.length > 0) {
+            warnings.push(`axes contains non-string values: ${JSON.stringify(nonStrings)}`);
+        }
+    }
+
+    // flaggedFindings is an array
+    if (!Array.isArray(state.flaggedFindings)) {
+        warnings.push(`flaggedFindings should be an array, got: ${typeof state.flaggedFindings}`);
+    }
+
+    // errors is an array
+    if (!Array.isArray(state.errors)) {
+        warnings.push(`errors should be an array, got: ${typeof state.errors}`);
+    }
+
+    return warnings;
+}
 
 /**
  * Gate definitions with pass criteria
@@ -22,23 +91,25 @@ const GATES = [
     {
         id: 0,
         name: 'Config',
-        check: (state, dir) => state.phase !== 'INIT'
+        check: (state, dir) => state.phase !== PHASES.INIT
     },
     {
         id: 1,
         name: 'Plan',
         check: (state, dir) => {
-            const planPath = path.join(dir, 'plan.md');
-            return fs.existsSync(planPath);
+            const planPath = path.join(dir, FILES.plan);
+            return fileExists(planPath);
         }
     },
     {
         id: 2,
         name: 'Gather',
         check: (state, dir) => {
-            const topicsDir = path.join(dir, 'topics');
-            if (!fs.existsSync(topicsDir)) return false;
+            const topicsDir = path.join(dir, DIRECTORIES.topics);
+            if (!fileExists(topicsDir)) return false;
             const files = fs.readdirSync(topicsDir).filter(f => f.endsWith('.md'));
+            // Verify ALL axes have topic files
+            if (!Array.isArray(state.axes) || state.axes.length === 0) return false;
             return files.length >= state.axes.length;
         }
     },
@@ -46,7 +117,11 @@ const GATES = [
         id: 3,
         name: 'Triage',
         check: (state, dir) => {
-            return state.triageComplete === true;
+            // Verify flaggedFindings exists and is non-empty
+            if (!Array.isArray(state.flaggedFindings) || state.flaggedFindings.length === 0) return false;
+            // Verify triage-summary.md exists
+            const triagePath = path.join(dir, FILES.triageSummary);
+            return fileExists(triagePath);
         }
     },
     {
@@ -54,9 +129,9 @@ const GATES = [
         name: 'Investigate',
         check: (state, dir) => {
             if (state.flaggedFindings.length === 0) return true;
-            const invDir = path.join(dir, 'investigations');
-            if (!fs.existsSync(invDir)) return false;
-            const invs = fs.readdirSync(invDir).filter(f => f.startsWith('INV'));
+            const invDir = path.join(dir, DIRECTORIES.investigations);
+            if (!fileExists(invDir)) return false;
+            const invs = fs.readdirSync(invDir).filter(f => f.startsWith(ID_PREFIXES.investigation));
             return invs.length >= state.flaggedFindings.length;
         }
     },
@@ -64,42 +139,45 @@ const GATES = [
         id: 5,
         name: 'Verify',
         check: (state, dir) => {
-            return state.verificationComplete === true;
+            // File-based check: fact-check.md must exist
+            const factCheckPath = path.join(dir, FILES.factCheck);
+            return fileExists(factCheckPath);
         }
     },
     {
         id: 6,
-        name: 'Neutrality',
+        name: 'Synthesize',
         check: (state, dir) => {
-            return state.neutralityPassed === true;
+            const briefingsDir = path.join(dir, DIRECTORIES.briefings);
+            if (!fileExists(briefingsDir)) return false;
+            return REPORT_FORMATS.every(f => fileExists(path.join(briefingsDir, f)));
         }
     },
     {
         id: 7,
-        name: 'Article',
+        name: 'Audit',
         check: (state, dir) => {
-            const briefingsDir = path.join(dir, 'briefings');
-            if (!fs.existsSync(briefingsDir)) return false;
-            const required = ['short.md', 'detailed.md', 'full.md'];
-            return required.every(f => fs.existsSync(path.join(briefingsDir, f)));
+            // File-based check: audit.md must exist
+            const auditPath = path.join(dir, FILES.audit);
+            return fileExists(auditPath);
         }
     }
 ];
 
 /**
- * Phase to gate mapping
+ * Phase to gate mapping.
+ * Maps each phase to the gate that must pass to advance beyond it.
+ * FINALIZE and COMPLETE have no gates (post-audit / terminal).
  */
 const PHASE_GATES = {
-    'INIT': 0,
-    'PLAN': 1,
-    'GATHER': 2,
-    'TRIAGE': 3,
-    'INVESTIGATE': 4,
-    'VERIFY': 5,
-    'SYNTHESIZE': 6,
-    'AUDIT': 6,
-    'FINALIZE': 7,
-    'COMPLETE': 8
+    [PHASES.INIT]: 0,
+    [PHASES.PLAN]: 1,
+    [PHASES.GATHER]: 2,
+    [PHASES.TRIAGE]: 3,
+    [PHASES.INVESTIGATE]: 4,
+    [PHASES.VERIFY]: 5,
+    [PHASES.SYNTHESIZE]: 6,
+    [PHASES.AUDIT]: 7
 };
 
 /**
@@ -149,50 +227,83 @@ function main() {
     }
 
     const briefingDir = args[0];
-    const statePath = path.join(briefingDir, 'state.json');
+    const statePath = path.join(briefingDir, FILES.state);
 
-    if (!fs.existsSync(statePath)) {
+    if (!fileExists(statePath)) {
         console.error(`State file not found: ${statePath}`);
-        process.exit(2);
+        process.exit(3);
     }
 
-    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    let state;
+    try {
+        state = loadJSON(statePath, 'state');
+    } catch (err) {
+        console.error(`System error loading state: ${err.message}`);
+        process.exit(3);
+    }
+
+    // Validate state schema
+    const warnings = validateState(state);
+    if (warnings.length > 0) {
+        console.warn('State validation warnings:');
+        warnings.forEach(w => console.warn(`  - ${w}`));
+    }
 
     // Check for errors
     if (state.errors && state.errors.length > 0) {
-        console.log('=== CHECK_RESULT ===');
-        console.log(JSON.stringify({
+        logResult('CHECK_RESULT', {
             continue: false,
             reason: 'errors',
             errors: state.errors
-        }, null, 2));
+        });
         process.exit(1);
     }
 
-    // Check if complete
-    if (state.phase === 'COMPLETE') {
-        console.log('=== CHECK_RESULT ===');
-        console.log(JSON.stringify({
+    // Check if complete (terminal state - success, not failure)
+    if (state.phase === PHASES.COMPLETE) {
+        logResult('CHECK_RESULT', {
             continue: false,
             reason: 'complete',
             message: 'Briefing is complete'
-        }, null, 2));
-        process.exit(1);
+        });
+        process.exit(0);
+    }
+
+    // FINALIZE has no gate - it is a post-audit pass-through phase
+    if (state.phase === PHASES.FINALIZE) {
+        logResult('CHECK_RESULT', {
+            continue: true,
+            action: {
+                action: 'continue',
+                message: 'FINALIZE phase has no gate, proceed to COMPLETE'
+            },
+            currentPhase: state.phase,
+            currentGate: state.currentGate,
+            gatesPassed: state.gatesPassed
+        });
+        process.exit(0);
     }
 
     // Determine next action
     const action = determineNextAction(state, briefingDir);
 
-    console.log('=== CHECK_RESULT ===');
-    console.log(JSON.stringify({
+    logResult('CHECK_RESULT', {
         continue: action.action !== 'complete',
         action: action,
         currentPhase: state.phase,
         currentGate: state.currentGate,
         gatesPassed: state.gatesPassed
-    }, null, 2));
+    });
 
-    process.exit(action.action === 'complete' ? 1 : 0);
+    // Exit codes: 0 = continue/advance/complete, 1 = gate failed
+    if (action.action === 'complete') {
+        process.exit(0);
+    } else if (action.action === 'advance') {
+        process.exit(0);
+    } else {
+        // action === 'continue' means gate not yet passed
+        process.exit(1);
+    }
 }
 
 main();

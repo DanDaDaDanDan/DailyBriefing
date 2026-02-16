@@ -15,10 +15,11 @@
 
 const fs = require('fs');
 const path = require('path');
-
-const ROOT_DIR = path.resolve(__dirname, '..');
-const BRIEFINGS_DIR = path.join(ROOT_DIR, 'briefings');
-const CONFIG_FILE = path.join(BRIEFINGS_DIR, 'config', 'interests.md');
+const crypto = require('crypto');
+const { PHASES } = require('./utils/constants');
+const paths = require('./utils/paths');
+const { loadJSON, saveJSON, fileExists, ensureDir, logResult } = require('./utils/file');
+const { acquireLock, releaseLock } = require('./utils/lock');
 
 /**
  * Parse command line arguments
@@ -45,9 +46,10 @@ function parseArgs() {
  * Check if config file exists
  */
 function checkConfig() {
-    if (!fs.existsSync(CONFIG_FILE)) {
+    const configPath = paths.configFile();
+    if (!fileExists(configPath)) {
         console.error('Error: Configuration file not found');
-        console.error(`Expected: ${CONFIG_FILE}`);
+        console.error(`Expected: ${configPath}`);
         console.error('');
         console.error('Create briefings/config/interests.md with your interests.');
         console.error('');
@@ -70,25 +72,59 @@ function checkConfig() {
 }
 
 /**
+ * Compute SHA256 checksum of a string
+ */
+function computeChecksum(content) {
+    return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+/**
  * Parse interest axes from config file
  */
 function parseInterests() {
-    const content = fs.readFileSync(CONFIG_FILE, 'utf8');
+    const content = fs.readFileSync(paths.configFile(), 'utf8');
     const axes = [];
+    const seenIds = new Map(); // id -> axis name, for duplicate detection
 
-    // Match ## headings (interest axis names)
-    const headingRegex = /^## ([A-Za-z0-9_\- ]+)$/gm;
-    let match;
+    // Split content by ## headings to get sections
+    const sections = content.split(/^## /m);
 
-    while ((match = headingRegex.exec(content)) !== null) {
-        const axisName = match[1].trim();
-        // Skip "Configuration Notes" and similar meta sections
-        if (!['Configuration Notes', 'Adding Custom Axes'].includes(axisName)) {
-            axes.push({
-                name: axisName,
-                id: axisName.toLowerCase().replace(/\s+/g, '-')
-            });
+    // First element is everything before the first ## heading; skip it
+    for (let i = 1; i < sections.length; i++) {
+        const section = sections[i];
+        const lines = section.split('\n');
+
+        // First line is the heading text (everything after the ## we split on)
+        const axisName = lines[0].trim();
+        if (!axisName) {
+            continue;
         }
+
+        // Remaining lines are the description
+        const description = lines.slice(1).join('\n').trim();
+
+        // Require at least 20 characters of description to qualify as an axis
+        if (description.length < 20) {
+            console.info(`Skipping section "${axisName}": insufficient description (${description.length} chars, need 20+)`);
+            continue;
+        }
+
+        // Generate ID: lowercase, spaces to hyphens, strip non-word/non-hyphen chars
+        const id = axisName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+
+        // Check for duplicate IDs
+        if (seenIds.has(id)) {
+            throw new Error(
+                `Duplicate axis ID "${id}" generated from both "${seenIds.get(id)}" and "${axisName}"`
+            );
+        }
+        seenIds.set(id, axisName);
+
+        axes.push({
+            name: axisName,
+            id: id,
+            description: description
+        });
     }
 
     if (axes.length === 0) {
@@ -97,24 +133,36 @@ function parseInterests() {
         return null;
     }
 
-    return axes;
+    // Compute config checksum
+    const configChecksum = computeChecksum(content);
+
+    return { axes, configChecksum };
 }
 
 /**
  * Create daily briefing directory structure
  */
-function createStructure(date, axes) {
-    const dayDir = path.join(BRIEFINGS_DIR, date);
+function createStructure(date, axes, configChecksum) {
+    const dayDir = paths.briefingRoot(date);
 
     // Check if already exists
-    if (fs.existsSync(dayDir)) {
+    if (fileExists(dayDir)) {
         console.log(`Directory already exists: ${dayDir}`);
         // Load existing state
-        const statePath = path.join(dayDir, 'state.json');
-        if (fs.existsSync(statePath)) {
-            const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+        const statePath = paths.stateFile(date);
+        if (fileExists(statePath)) {
+            const state = loadJSON(statePath, 'state');
             console.log(`Current phase: ${state.phase}`);
             console.log(`Current gate: ${state.currentGate}`);
+
+            // Config change detection
+            if (state.configChecksum && state.configChecksum !== configChecksum) {
+                console.warn('WARNING: interests.md has changed since this briefing was started.');
+                console.warn(`Previous checksum: ${state.configChecksum}`);
+                console.warn(`Current checksum: ${configChecksum}`);
+                console.warn('This may cause inconsistent results.');
+            }
+
             return { dayDir, state, existing: true };
         }
     }
@@ -122,14 +170,20 @@ function createStructure(date, axes) {
     // Create directories
     const dirs = [
         dayDir,
-        path.join(dayDir, 'topics'),
-        path.join(dayDir, 'investigations'),
-        path.join(dayDir, 'evidence'),
-        path.join(dayDir, 'briefings')
+        paths.topics(date),
+        paths.investigations(date),
+        paths.evidence(date),
+        paths.briefings(date)
     ];
 
     for (const dir of dirs) {
-        fs.mkdirSync(dir, { recursive: true });
+        ensureDir(dir);
+    }
+
+    // Build per-axis status tracking
+    const axisStatus = {};
+    for (const axis of axes) {
+        axisStatus[axis.id] = { status: 'pending', storiesFound: 0 };
     }
 
     // Create initial state
@@ -137,35 +191,89 @@ function createStructure(date, axes) {
         date: date,
         currentGate: 0,
         gatesPassed: [],
-        phase: 'INIT',
+        phase: PHASES.INIT,
         axes: axes.map(a => a.id),
         axesConfig: axes,
+        axisStatus: axisStatus,
+        configChecksum: configChecksum,
+        configVersion: '1.0',
         flaggedFindings: [],
         errors: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
 
-    fs.writeFileSync(
-        path.join(dayDir, 'state.json'),
-        JSON.stringify(state, null, 2)
-    );
+    saveJSON(paths.stateFile(date), state, 'state');
 
     // Create empty registries
-    fs.writeFileSync(
-        path.join(dayDir, 'stories.json'),
-        JSON.stringify({ stories: [], lastUpdated: new Date().toISOString() }, null, 2)
-    );
+    saveJSON(paths.storiesFile(date), {
+        stories: [],
+        lastUpdated: new Date().toISOString()
+    }, 'stories');
 
-    fs.writeFileSync(
-        path.join(dayDir, 'sources.json'),
-        JSON.stringify({ sources: [], lastUpdated: new Date().toISOString() }, null, 2)
-    );
+    saveJSON(paths.sourcesFile(date), {
+        sources: [],
+        lastUpdated: new Date().toISOString()
+    }, 'sources');
 
     console.log(`Created briefing structure: ${dayDir}`);
     console.log(`Interest axes: ${axes.map(a => a.name).join(', ')}`);
 
     return { dayDir, state, existing: false };
+}
+
+/**
+ * Scan for incomplete briefings and log warnings.
+ * Does not block execution; purely informational.
+ * @param {string} currentDate - The date being initialized (YYYY-MM-DD), excluded from warnings
+ */
+function checkIncompleteBriefings(currentDate) {
+    if (!fileExists(paths.BRIEFINGS_BASE)) return;
+
+    let entries;
+    try {
+        entries = fs.readdirSync(paths.BRIEFINGS_BASE, { withFileTypes: true });
+    } catch {
+        return;
+    }
+
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const incomplete = [];
+
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (!datePattern.test(entry.name)) continue;
+        if (entry.name === currentDate) continue;
+
+        const statePath = paths.stateFile(entry.name);
+        if (!fileExists(statePath)) continue;
+
+        try {
+            const state = loadJSON(statePath, 'state');
+            if (state.phase && state.phase !== PHASES.COMPLETE) {
+                incomplete.push({
+                    date: entry.name,
+                    phase: state.phase,
+                    gate: typeof state.currentGate === 'number' ? state.currentGate : null
+                });
+            }
+        } catch {
+            // Skip directories with unreadable state
+        }
+    }
+
+    if (incomplete.length > 0) {
+        // Sort by date descending (most recent first)
+        incomplete.sort((a, b) => b.date.localeCompare(a.date));
+
+        console.log('');
+        for (const b of incomplete) {
+            const gateStr = b.gate !== null ? b.gate : '?';
+            console.log(`Note: Found incomplete briefing from ${b.date} (phase: ${b.phase}, gate: ${gateStr})`);
+            console.log(`  Use --date ${b.date} to resume, or continue with today's date.`);
+        }
+        console.log('');
+    }
 }
 
 /**
@@ -178,6 +286,39 @@ function main() {
     const { date } = parseArgs();
     console.log(`Date: ${date}`);
 
+    // Check for incomplete briefings from other dates (informational only)
+    checkIncompleteBriefings(date);
+
+    // Check for concurrent briefing process (informational only, does not block)
+    const dayDir = paths.briefingRoot(date);
+    const briefingLockPath = path.join(dayDir, 'briefing.lock');
+    if (fileExists(briefingLockPath)) {
+        let staleWarning = '';
+        try {
+            const infoPath = path.join(briefingLockPath, 'lock.info');
+            if (fileExists(infoPath)) {
+                const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
+                const age = Date.now() - new Date(info.acquiredAt).getTime();
+                if (age > 5 * 60 * 1000) {
+                    staleWarning = ` (stale - ${Math.round(age / 1000)}s old, PID ${info.pid})`;
+                    console.warn(`WARNING: Stale briefing lock detected${staleWarning}`);
+                    console.warn('  Removing stale lock and continuing.');
+                    releaseLock(briefingLockPath);
+                } else {
+                    console.warn(`WARNING: Another process may be running a briefing for ${date}`);
+                    console.warn(`  Lock held by PID ${info.pid} since ${info.acquiredAt}`);
+                    console.warn('  Continuing anyway - concurrent access may cause issues.');
+                }
+            } else {
+                console.warn(`WARNING: Briefing lock directory exists but has no info: ${briefingLockPath}`);
+                console.warn('  This may indicate a crashed process. Continuing anyway.');
+            }
+        } catch (e) {
+            console.warn(`WARNING: Could not read briefing lock info: ${e.message}`);
+            console.warn('  Continuing anyway.');
+        }
+    }
+
     // Gate 0: Check config exists
     if (!checkConfig()) {
         process.exit(1);
@@ -185,27 +326,28 @@ function main() {
     console.log('Config file found');
 
     // Parse interest axes
-    const axes = parseInterests();
-    if (!axes) {
+    const parsed = parseInterests();
+    if (!parsed) {
         process.exit(2);
     }
+    const { axes, configChecksum } = parsed;
     console.log(`Found ${axes.length} interest axes`);
+    console.log(`Config checksum: ${configChecksum.substring(0, 16)}...`);
 
     // Create structure
     try {
-        const result = createStructure(date, axes);
+        const result = createStructure(date, axes, configChecksum);
 
         // Output result as JSON for Claude to parse
         console.log('');
-        console.log('=== INIT_RESULT ===');
-        console.log(JSON.stringify({
+        logResult('INIT_RESULT', {
             success: true,
             date: date,
             directory: result.dayDir,
             axes: axes,
             existing: result.existing,
             state: result.state
-        }, null, 2));
+        });
 
         process.exit(0);
     } catch (error) {

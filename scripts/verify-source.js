@@ -18,6 +18,9 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { DIRECTORIES, FILES, ID_PREFIXES } = require('./utils/constants');
+const { loadJSON, saveJSON, fileExists, ensureDir, logResult } = require('./utils/file');
+const { getNextId } = require('./utils/ids');
 
 /**
  * Generate SHA256 hash of content
@@ -43,7 +46,7 @@ function createMetadata(url, hash, additionalData = {}) {
  * This creates the metadata structure
  */
 function captureSource(url, outputDir, content, additionalData = {}) {
-    fs.mkdirSync(outputDir, { recursive: true });
+    ensureDir(outputDir);
 
     const hash = hashContent(content);
 
@@ -54,7 +57,7 @@ function captureSource(url, outputDir, content, additionalData = {}) {
     // Save metadata
     const metadata = createMetadata(url, hash, additionalData);
     const metadataPath = path.join(outputDir, 'metadata.json');
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+    saveJSON(metadataPath, metadata, 'source metadata');
 
     return {
         success: true,
@@ -71,15 +74,15 @@ function verifySource(evidenceDir) {
     const metadataPath = path.join(evidenceDir, 'metadata.json');
     const contentPath = path.join(evidenceDir, 'content.md');
 
-    if (!fs.existsSync(metadataPath)) {
+    if (!fileExists(metadataPath)) {
         return { verified: false, error: 'metadata.json not found' };
     }
 
-    if (!fs.existsSync(contentPath)) {
+    if (!fileExists(contentPath)) {
         return { verified: false, error: 'content.md not found' };
     }
 
-    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    const metadata = loadJSON(metadataPath, 'source metadata');
     const content = fs.readFileSync(contentPath, 'utf8');
     const currentHash = hashContent(content);
 
@@ -104,15 +107,15 @@ function verifySource(evidenceDir) {
  * Verify all sources in a briefing
  */
 function verifyAllSources(briefingDir) {
-    const evidenceDir = path.join(briefingDir, 'evidence');
+    const evidDir = path.join(briefingDir, DIRECTORIES.evidence);
 
-    if (!fs.existsSync(evidenceDir)) {
+    if (!fileExists(evidDir)) {
         return { verified: true, sources: [], message: 'No evidence directory' };
     }
 
-    const sourceDirs = fs.readdirSync(evidenceDir)
-        .filter(f => f.startsWith('S'))
-        .map(f => path.join(evidenceDir, f));
+    const sourceDirs = fs.readdirSync(evidDir)
+        .filter(f => f.startsWith(ID_PREFIXES.source))
+        .map(f => path.join(evidDir, f));
 
     const results = [];
     let allVerified = true;
@@ -140,11 +143,11 @@ function verifyAllSources(briefingDir) {
  * Register a source in sources.json
  */
 function registerSource(briefingDir, sourceId, url, hash, title = '') {
-    const sourcesPath = path.join(briefingDir, 'sources.json');
+    const sourcesPath = path.join(briefingDir, FILES.sources);
 
     let sources = { sources: [], lastUpdated: new Date().toISOString() };
-    if (fs.existsSync(sourcesPath)) {
-        sources = JSON.parse(fs.readFileSync(sourcesPath, 'utf8'));
+    if (fileExists(sourcesPath)) {
+        sources = loadJSON(sourcesPath, 'sources registry');
     }
 
     // Check if source already exists
@@ -165,7 +168,7 @@ function registerSource(briefingDir, sourceId, url, hash, title = '') {
     sources.sources.push(newSource);
     sources.lastUpdated = new Date().toISOString();
 
-    fs.writeFileSync(sourcesPath, JSON.stringify(sources, null, 2));
+    saveJSON(sourcesPath, sources, 'sources registry');
 
     return { registered: true, source: newSource };
 }
@@ -174,19 +177,8 @@ function registerSource(briefingDir, sourceId, url, hash, title = '') {
  * Get next source ID
  */
 function getNextSourceId(briefingDir) {
-    const evidenceDir = path.join(briefingDir, 'evidence');
-
-    if (!fs.existsSync(evidenceDir)) {
-        return 'S001';
-    }
-
-    const existing = fs.readdirSync(evidenceDir)
-        .filter(f => f.startsWith('S'))
-        .map(f => parseInt(f.substring(1), 10))
-        .filter(n => !isNaN(n));
-
-    const maxId = existing.length > 0 ? Math.max(...existing) : 0;
-    return `S${String(maxId + 1).padStart(3, '0')}`;
+    const evidDir = path.join(briefingDir, DIRECTORIES.evidence);
+    return getNextId(evidDir, ID_PREFIXES.source);
 }
 
 /**
@@ -227,8 +219,7 @@ function main() {
         }
 
         const result = captureSource(url, outputDir, content);
-        console.log('=== CAPTURE_RESULT ===');
-        console.log(JSON.stringify(result, null, 2));
+        logResult('CAPTURE_RESULT', result);
         process.exit(0);
 
     } else if (command === '--verify') {
@@ -238,8 +229,7 @@ function main() {
         }
 
         const result = verifySource(args[1]);
-        console.log('=== VERIFY_RESULT ===');
-        console.log(JSON.stringify(result, null, 2));
+        logResult('VERIFY_RESULT', result);
         process.exit(result.verified ? 0 : 1);
 
     } else if (command === '--check-all') {
@@ -249,8 +239,7 @@ function main() {
         }
 
         const result = verifyAllSources(args[1]);
-        console.log('=== CHECK_ALL_RESULT ===');
-        console.log(JSON.stringify(result, null, 2));
+        logResult('CHECK_ALL_RESULT', result);
         process.exit(result.verified ? 0 : 1);
 
     } else if (command === '--register') {
@@ -260,8 +249,7 @@ function main() {
         }
 
         const result = registerSource(args[1], args[2], args[3], args[4], args[5] || '');
-        console.log('=== REGISTER_RESULT ===');
-        console.log(JSON.stringify(result, null, 2));
+        logResult('REGISTER_RESULT', result);
         process.exit(result.registered ? 0 : 1);
 
     } else if (command === '--next-id') {
